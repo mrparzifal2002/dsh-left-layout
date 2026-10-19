@@ -25,6 +25,7 @@ type LeftLayoutKey =
   | 'newSession'
   | 'more'
   | 'more.title'
+  | 'more.count'
   | 'more.always'
   | 'more.hint'
   | 'more.empty'
@@ -50,6 +51,7 @@ const zh: Record<LeftLayoutKey, string> = {
   newSession: '新会话',
   more: '更多',
   'more.title': '提到外面',
+  'more.count': '更多（{count}）',
   'more.always': '常驻',
   'more.hint': '勾选后显示在功能栏',
   'more.empty': '暂无其他功能',
@@ -70,6 +72,7 @@ const en: Record<LeftLayoutKey, string> = {
   newSession: 'New Session',
   more: 'More',
   'more.title': 'Show outside',
+  'more.count': 'More ({count})',
   'more.always': 'Always',
   'more.hint': 'Checked functions appear in the function bar',
   'more.empty': 'No other functions',
@@ -857,12 +860,21 @@ interface TaskStatus {
   completionUnread?: boolean
 }
 
+/** Whether a Workspace is the product's automatic default Workspace. */
+function isDefaultWorkspace(workspace: WorkspaceView): boolean {
+  const path = workspace.path.replace(/\\/g, '/').toLowerCase()
+  if (path.endsWith('/deepseek-harness/default-workspace')) return true
+  return workspace.title.trim().toLowerCase() === 'default-workspace'
+}
+
 /** Derive the ungrouped task digest: recent five, remainder, total. */
 function deriveTasks(sessions: SessionListState, workspaces: WorkspaceSnapshot): {
   total: number
   visible: TaskRow[]
   rest: TaskRow[]
 } {
+  const defaultWorkspace = workspaces.items.find(isDefaultWorkspace)
+  const defaultIds = new Set<string>(defaultWorkspace === undefined ? [] : defaultWorkspace.sessionIds.map(String))
   const assigned = new Set<string>()
   for (const workspace of workspaces.items) {
     for (const id of workspace.sessionIds) assigned.add(String(id))
@@ -873,7 +885,8 @@ function deriveTasks(sessions: SessionListState, workspaces: WorkspaceSnapshot):
     const summary = sessions.byId[id]
     if (summary === undefined) continue
     const key = String(id)
-    if (assigned.has(key) || archived.has(key)) continue
+    if (archived.has(key)) continue
+    if (assigned.has(key) && !defaultIds.has(key)) continue
     if (summary.origin === 'subagent' || summary.blank) continue
     rows.push({ id: key, displayTitle: summary.displayTitle, updatedAt: summary.updatedAt })
   }
@@ -1026,6 +1039,8 @@ function FunctionBar(props: {
   const [promoted, setPromoted] = React.useState<string[]>(readPromoted)
   const promotedSet = React.useMemo(() => new Set(promoted), [promoted])
   const visible = panels.filter((panel) => promotedSet.has(panel.id))
+  const hiddenCount = panels.length - visible.length
+  const moreLabel = hiddenCount > 0 ? t('more.count', { count: hiddenCount }) : t('more')
   const [open, setOpen] = React.useState(false)
   const [anchor, setAnchor] = React.useState<{ top: number; left: number; width: number } | null>(null)
   const moreRef = React.useRef<HTMLButtonElement>(null)
@@ -1055,10 +1070,18 @@ function FunctionBar(props: {
       if (event.key === 'Escape') setOpen(false)
     }
     const onResize = (): void => setOpen(false)
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target as Element | null
+      if (target !== null && target.closest('.dshLL_moreMenu') !== null) return
+      if (target !== null && moreRef.current !== null && moreRef.current.contains(target)) return
+      setOpen(false)
+    }
     document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('pointerdown', onPointerDown, true)
     window.addEventListener('resize', onResize)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('pointerdown', onPointerDown, true)
       window.removeEventListener('resize', onResize)
     }
   }, [open])
@@ -1068,8 +1091,8 @@ function FunctionBar(props: {
       ref={moreRef}
       type="button"
       className={wide ? 'dshLL_row' : 'dshLL_railButton'}
-      aria-label={t('more')}
-      title={wide ? undefined : t('more')}
+      aria-label={moreLabel}
+      title={wide ? undefined : moreLabel}
       aria-expanded={open}
       data-active={open ? 'true' : undefined}
       onClick={() => {
@@ -1078,7 +1101,7 @@ function FunctionBar(props: {
       }}
     >
       <span className={wide ? 'dshLL_rowIcon' : undefined}><IconMore size={wide ? 16 : 18} /></span>
-      {wide ? <span className="dshLL_rowLabel">{t('more')}</span> : null}
+      {wide ? <span className="dshLL_rowLabel">{moreLabel}</span> : null}
     </button>
   )
 
@@ -1170,6 +1193,10 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
     () => new Set<string>(workspaces.archivedSessionIds.map(String)),
     [workspaces.archivedSessionIds],
   )
+  const namedWorkspaces = React.useMemo(
+    () => workspaces.items.filter((workspace) => !isDefaultWorkspace(workspace)),
+    [workspaces.items],
+  )
   const statusOf = (id: string): TaskStatus | undefined => sessionStatus.get(id as never)
 
   React.useLayoutEffect(() => {
@@ -1232,7 +1259,7 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
           <div className="dshLL_bottom">
             <SectionHeader
               title={t('section.workspaces')}
-              count={workspaces.items.length}
+              count={namedWorkspaces.length}
               action={(
                 <button
                   type="button"
@@ -1246,10 +1273,10 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
               )}
             />
             <div className="dshLL_scroll">
-              {workspaces.items.length === 0 ? (
+              {namedWorkspaces.length === 0 ? (
                 <div className="dshLL_placeholder">{t('workspaces.empty')}</div>
               ) : (
-                workspaces.items.map((workspace) => (
+                namedWorkspaces.map((workspace) => (
                   <WorkspaceGroup
                     key={String(workspace.workspaceId)}
                     workspace={workspace}
