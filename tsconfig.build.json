@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "declaration": false,
+    "outDir": ".build",
+    "sourceMap": false
+  },
+  "include": [
+    "src/client.tsx"
+  ]
+}

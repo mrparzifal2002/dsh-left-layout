@@ -1,0 +1,79 @@
+{
+  "name": "dsh-left-layout",
+  "version": "0.1.0",
+  "description": "Three-section left sidebar layout for the DSH Web GUI: functions, recent tasks, and workspaces",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "lib/types/**/*.d.ts",
+    "locale/*.json",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0",
+    "dsh": ">=0.2.1-rc.2 <0.3.0-0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.5",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-api-workspace-controller": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-locale": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-shortcuts": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-layout": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-session": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-workspace": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-session": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-workspace": "0.2.1-rc.2",
+    "@types/node": "^22.20.0",
+    "@types/react": "^18.3.0",
+    "react": "^18.2.0",
+    "typescript": "~5.7.2"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  }
+}

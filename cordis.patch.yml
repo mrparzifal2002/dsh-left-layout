@@ -1,0 +1,5 @@
+# Bundle patch: insert this plugin's own loader row. The client half is
+# discovered from package.json and needs no separate row.
+- insert:
+    - id: left-layout
+      name: dsh-left-layout
