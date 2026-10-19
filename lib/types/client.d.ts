@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 /** Client services this plugin needs. */
 export declare const inject: string[];
-type LeftLayoutKey = 'section.functions' | 'section.tasks' | 'section.workspaces' | 'newSession' | 'more' | 'tasks.placeholder' | 'workspaces.placeholder';
+type LeftLayoutKey = 'section.functions' | 'section.tasks' | 'section.workspaces' | 'newSession' | 'more' | 'more.title' | 'more.always' | 'more.hint' | 'more.empty' | 'tasks.placeholder' | 'workspaces.placeholder';
 declare module '@deepseek-ai/dsh-client-ui-slots' {
     interface LocaleNamespaceMap {
         leftLayout: LeftLayoutKey;

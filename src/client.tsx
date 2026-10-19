@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 import type { Context } from '@deepseek-ai/cordis'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -19,6 +20,10 @@ type LeftLayoutKey =
   | 'section.workspaces'
   | 'newSession'
   | 'more'
+  | 'more.title'
+  | 'more.always'
+  | 'more.hint'
+  | 'more.empty'
   | 'tasks.placeholder'
   | 'workspaces.placeholder'
 
@@ -34,6 +39,10 @@ const zh: Record<LeftLayoutKey, string> = {
   'section.workspaces': '工作区',
   newSession: '新会话',
   more: '更多',
+  'more.title': '提到外面',
+  'more.always': '常驻',
+  'more.hint': '勾选后显示在功能栏',
+  'more.empty': '暂无其他功能',
   'tasks.placeholder': '最近的无归属会话将显示在这里',
   'workspaces.placeholder': '已注册的工作区将显示在这里',
 }
@@ -44,6 +53,10 @@ const en: Record<LeftLayoutKey, string> = {
   'section.workspaces': 'Workspaces',
   newSession: 'New Session',
   more: 'More',
+  'more.title': 'Show outside',
+  'more.always': 'Always',
+  'more.hint': 'Checked functions appear in the function bar',
+  'more.empty': 'No other functions',
   'tasks.placeholder': 'Recent ungrouped conversations will appear here',
   'workspaces.placeholder': 'Registered workspaces will appear here',
 }
@@ -87,7 +100,10 @@ html[data-dsh-left-layout-active] [class*="panelList"] {
 }
 
 .dshLL_top {
-  flex: none;
+  flex: 0 1 auto;
+  max-height: 46%;
+  min-height: 0;
+  overflow-y: auto;
   padding: 4px 8px 6px;
 }
 
@@ -237,6 +253,140 @@ html[data-dsh-left-layout-active] [class*="panelList"] {
 .dshLL_railButton:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }
+
+.dshLL_railButton[data-active="true"] {
+  background: var(--dsw-specific-sidebar-nav-item-active, var(--dsw-alias-interactive-bg-hover));
+}
+
+.dshLL_moreBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: transparent;
+}
+
+.dshLL_moreMenu {
+  position: fixed;
+  z-index: 1201;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  max-height: min(60vh, 480px);
+  padding: 8px;
+  border: 1px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.22));
+  border-radius: var(--dsw-radius-panel, 12px);
+  background: var(--dsw-alias-bg-layer-2, #1f1f1f);
+  box-shadow: var(--dsw-elevation-prominent, 0 12px 32px rgba(0, 0, 0, 0.32));
+  color: var(--dsw-alias-label-primary, inherit);
+  font-family: inherit;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.dshLL_menuTitle {
+  flex: none;
+  padding: 4px 8px 6px;
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dshLL_menuList {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.dshLL_menuRow {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: var(--dsw-radius-md, 8px);
+  color: inherit;
+  cursor: pointer;
+}
+
+.dshLL_menuRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dshLL_menuRow input {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--dsw-alias-label-primary, currentColor);
+}
+
+.dshLL_menuRowLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshLL_menuRowIcon {
+  flex: none;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-secondary, inherit);
+}
+
+.dshLL_menuFixed {
+  cursor: default;
+  opacity: 0.82;
+}
+
+.dshLL_menuFixed:hover {
+  background: transparent;
+}
+
+.dshLL_menuCheck {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--dsw-alias-label-secondary, inherit);
+  font-size: 12px;
+  line-height: 14px;
+}
+
+.dshLL_menuTag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.16));
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.dshLL_menuEmpty {
+  padding: 8px;
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-size: 12px;
+}
+
+.dshLL_menuHint {
+  flex: none;
+  padding: 6px 8px 2px;
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-size: 11px;
+  line-height: 16px;
+}
 `
 
 /** New conversation glyph. */
@@ -267,6 +417,43 @@ function IconWorkspace({ size = 16 }: { size?: number }): React.ReactElement {
       <path d="M2.2 4.3c0-.5.4-.9.9-.9h3l1.2 1.2h5.6c.5 0 .9.4.9.9v6.2c0 .5-.4.9-.9.9H3.1a.9.9 0 0 1-.9-.9V4.3Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
     </svg>
   )
+}
+
+/** Plug glyph for plugin-backed global panels. */
+function IconPlug({ size = 16 }: { size?: number }): React.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M6 2.5v2M10 2.5v2M4 4.5h8v2a4 4 0 0 1-8 0v-2ZM8 10.5v3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/** Checklist glyph for task-like panels. */
+function IconChecklist({ size = 16 }: { size?: number }): React.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="m2.6 4.4 1.2 1.2 2-2.2M2.6 9.4l1.2 1.2 2-2.2M8.2 4.6h5.2M8.2 9.6h5.2M8.2 12.4h3.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/** Clock glyph for schedule-like panels. */
+function IconClock({ size = 16 }: { size?: number }): React.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.6" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M8 4.8V8l2.2 1.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/** Pick a stable glyph for a global panel id. */
+function PanelIcon({ id, size = 16 }: { id: string; size?: number }): React.ReactElement {
+  const key = id.toLowerCase()
+  if (key.includes('plugin')) return <IconPlug size={size} />
+  if (key.includes('schedule') || key.includes('cron')) return <IconClock size={size} />
+  if (key.includes('task') || key.includes('goal') || key.includes('workflow')) return <IconChecklist size={size} />
+  return <IconWorkspace size={size} />
 }
 
 /** Render a full-width function row. */
@@ -357,6 +544,198 @@ function createPanelSource(ctx: Context): {
   }
 }
 
+const PROMOTED_KEY = 'dsh-left-layout:promoted:v1'
+
+/** Read the browser-local promotion list; malformed storage means no promotions. */
+function readPromoted(): string[] {
+  try {
+    const raw = window.localStorage.getItem(PROMOTED_KEY)
+    if (raw === null) return []
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/** Persist the promotion list; storage failures are non-fatal. */
+function writePromoted(ids: readonly string[]): void {
+  try {
+    window.localStorage.setItem(PROMOTED_KEY, JSON.stringify(ids))
+  } catch {
+    // Private browsing or a blocked storage partition: keep the in-memory state.
+  }
+}
+
+/** Floating checkbox list that decides which functions sit in the bar. */
+function MoreMenu(props: {
+  anchor: { top: number; left: number; width: number }
+  panels: readonly PanelItem[]
+  promoted: ReadonlySet<string>
+  onToggle(id: string, on: boolean): void
+  t(key: LeftLayoutKey): string
+}): React.ReactElement {
+  const { anchor, panels, promoted, onToggle, t } = props
+  return createPortal(
+    <div
+      className="dshLL_moreMenu"
+      role="dialog"
+      aria-label={t('more.title')}
+      style={{ top: anchor.top, left: anchor.left, width: anchor.width }}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <div className="dshLL_menuTitle">{t('more.title')}</div>
+      <div className="dshLL_menuFixed dshLL_menuRow">
+        <span className="dshLL_menuCheck">✓</span>
+        <span className="dshLL_menuRowIcon"><IconNewChat /></span>
+        <span className="dshLL_menuRowLabel">{t('newSession')}</span>
+        <span className="dshLL_menuTag">{t('more.always')}</span>
+      </div>
+      <div className="dshLL_menuList">
+        {panels.length === 0 ? <div className="dshLL_menuEmpty">{t('more.empty')}</div> : null}
+        {panels.map((panel) => (
+          <label key={panel.id} className="dshLL_menuRow">
+            <input
+              type="checkbox"
+              checked={promoted.has(panel.id)}
+              onChange={(event) => onToggle(panel.id, event.currentTarget.checked)}
+            />
+            <span className="dshLL_menuRowIcon"><PanelIcon id={panel.id} /></span>
+            <span className="dshLL_menuRowLabel">{panel.label}</span>
+          </label>
+        ))}
+      </div>
+      <div className="dshLL_menuHint">{t('more.hint')}</div>
+    </div>,
+    document.body,
+  )
+}
+
+/** The top function bar: New Session plus promoted functions plus More. */
+function FunctionBar(props: {
+  wide: boolean
+  panels: readonly PanelItem[]
+  activePanelId: string | null
+  selectPanel(id: string): void
+  startSession(): void
+  t(key: LeftLayoutKey): string
+}): React.ReactElement {
+  const { wide, panels, activePanelId, selectPanel, startSession, t } = props
+  const [promoted, setPromoted] = React.useState<string[]>(readPromoted)
+  const promotedSet = React.useMemo(() => new Set(promoted), [promoted])
+  const visible = panels.filter((panel) => promotedSet.has(panel.id))
+  const [open, setOpen] = React.useState(false)
+  const [anchor, setAnchor] = React.useState<{ top: number; left: number; width: number } | null>(null)
+  const moreRef = React.useRef<HTMLButtonElement>(null)
+
+  const openMenu = (): void => {
+    const rect = moreRef.current?.getBoundingClientRect()
+    const width = Math.max(220, Math.min(300, window.innerWidth - 16))
+    const left = rect === undefined ? 8 : Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))
+    const top = rect === undefined ? 48 : Math.min(rect.bottom + 4, window.innerHeight - 80)
+    setAnchor({ top, left, width })
+    setOpen(true)
+  }
+
+  const toggle = (id: string, on: boolean): void => {
+    setPromoted((current) => {
+      const next = on
+        ? (current.includes(id) ? current : [...current, id])
+        : current.filter((item) => item !== id)
+      writePromoted(next)
+      return next
+    })
+  }
+
+  React.useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    const onResize = (): void => setOpen(false)
+    document.addEventListener('keydown', onKeyDown)
+    window.addEventListener('resize', onResize)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [open])
+
+  const moreButton = (
+    <button
+      ref={moreRef}
+      type="button"
+      className={wide ? 'dshLL_row' : 'dshLL_railButton'}
+      aria-label={t('more')}
+      title={wide ? undefined : t('more')}
+      aria-expanded={open}
+      data-active={open ? 'true' : undefined}
+      onClick={() => {
+        if (open) setOpen(false)
+        else openMenu()
+      }}
+    >
+      <span className={wide ? 'dshLL_rowIcon' : undefined}><IconMore size={wide ? 16 : 18} /></span>
+      {wide ? <span className="dshLL_rowLabel">{t('more')}</span> : null}
+    </button>
+  )
+
+  return (
+    <>
+      {wide ? (
+        <div className="dshLL_top">
+          <div className="dshLL_sectionLabel">{t('section.functions')}</div>
+          <div className="dshLL_functionList">
+            <FunctionRow icon={<IconNewChat />} label={t('newSession')} onClick={startSession} />
+            {visible.map((panel) => (
+              <FunctionRow
+                key={panel.id}
+                icon={<PanelIcon id={panel.id} />}
+                label={panel.label}
+                active={activePanelId === panel.id}
+                onClick={() => selectPanel(panel.id)}
+              />
+            ))}
+            {moreButton}
+          </div>
+        </div>
+      ) : (
+        <div className="dshLL_rail">
+          <button type="button" className="dshLL_railButton" aria-label={t('newSession')} title={t('newSession')} onClick={startSession}>
+            <IconNewChat size={18} />
+          </button>
+          {visible.map((panel) => (
+            <button
+              key={panel.id}
+              type="button"
+              className="dshLL_railButton"
+              aria-label={panel.label}
+              title={panel.label}
+              data-active={activePanelId === panel.id ? 'true' : undefined}
+              onClick={() => selectPanel(panel.id)}
+            >
+              <PanelIcon id={panel.id} size={18} />
+            </button>
+          ))}
+          {moreButton}
+        </div>
+      )}
+      {open && anchor !== null ? (
+        <>
+          <div className="dshLL_moreBackdrop" onPointerDown={() => setOpen(false)} />
+          <MoreMenu
+            anchor={anchor}
+            panels={panels}
+            promoted={promotedSet}
+            onToggle={toggle}
+            t={t}
+          />
+        </>
+      ) : null}
+    </>
+  )
+}
+
 /** The three-section sidebar browsing region. */
 function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
   const {
@@ -385,56 +764,34 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
     }
   }, [])
 
-  if (!wide) {
-    return (
-      <div className="dshLL_root">
-        <div className="dshLL_rail">
-          <button type="button" className="dshLL_railButton" aria-label={t('newSession')} title={t('newSession')} onClick={startSession}>
-            <IconNewChat size={18} />
-          </button>
-          <button type="button" className="dshLL_railButton" aria-label={t('more')} title={t('more')}>
-            <IconMore size={18} />
-          </button>
-          <button type="button" className="dshLL_railButton" aria-label={t('section.workspaces')} title={t('section.workspaces')}>
-            <IconWorkspace size={18} />
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="dshLL_root">
-      <div className="dshLL_top">
-        <div className="dshLL_sectionLabel">{t('section.functions')}</div>
-        <div className="dshLL_functionList">
-          <FunctionRow icon={<IconNewChat />} label={t('newSession')} onClick={startSession} />
-          {panelRows.map((panel) => (
-            <FunctionRow
-              key={panel.id}
-              icon={<IconWorkspace />}
-              label={panel.label}
-              active={activePanelId === panel.id}
-              onClick={() => selectPanel(panel.id)}
-            />
-          ))}
-          <FunctionRow icon={<IconMore />} label={t('more')} onClick={() => undefined} />
-        </div>
-      </div>
+      <FunctionBar
+        wide={wide}
+        panels={panelRows}
+        activePanelId={activePanelId}
+        selectPanel={selectPanel}
+        startSession={startSession}
+        t={t}
+      />
 
-      <div className="dshLL_middle">
-        <SectionHeader title={t('section.tasks')} count={sessions.ids.length} />
-        <div className="dshLL_scroll">
-          <div className="dshLL_placeholder">{t('tasks.placeholder')}</div>
-        </div>
-      </div>
+      {wide ? (
+        <>
+          <div className="dshLL_middle">
+            <SectionHeader title={t('section.tasks')} count={sessions.ids.length} />
+            <div className="dshLL_scroll">
+              <div className="dshLL_placeholder">{t('tasks.placeholder')}</div>
+            </div>
+          </div>
 
-      <div className="dshLL_bottom">
-        <SectionHeader title={t('section.workspaces')} count={workspaces.items.length} />
-        <div className="dshLL_scroll">
-          <div className="dshLL_placeholder">{t('workspaces.placeholder')}</div>
-        </div>
-      </div>
+          <div className="dshLL_bottom">
+            <SectionHeader title={t('section.workspaces')} count={workspaces.items.length} />
+            <div className="dshLL_scroll">
+              <div className="dshLL_placeholder">{t('workspaces.placeholder')}</div>
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   )
 }
