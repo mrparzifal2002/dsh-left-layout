@@ -1,6 +1,8 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 import type { Context } from '@deepseek-ai/cordis'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -14,6 +16,8 @@ export const inject = ['slots', 'locale', 'layout', 'uiWorkspace', 'workspaces']
 
 const NS = 'leftLayout'
 
+type LayoutT = (key: LeftLayoutKey, params?: Record<string, unknown>) => string
+
 type LeftLayoutKey =
   | 'section.functions'
   | 'section.tasks'
@@ -25,7 +29,13 @@ type LeftLayoutKey =
   | 'more.hint'
   | 'more.empty'
   | 'tasks.placeholder'
+  | 'tasks.empty'
+  | 'tasks.more'
+  | 'tasks.less'
   | 'workspaces.placeholder'
+  | 'workspaces.empty'
+  | 'workspaces.add'
+  | 'workspaces.noSessions'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -44,7 +54,13 @@ const zh: Record<LeftLayoutKey, string> = {
   'more.hint': '勾选后显示在功能栏',
   'more.empty': '暂无其他功能',
   'tasks.placeholder': '最近的无归属会话将显示在这里',
+  'tasks.empty': '暂无无归属会话',
+  'tasks.more': '查看更多（{count}）',
+  'tasks.less': '收起',
   'workspaces.placeholder': '已注册的工作区将显示在这里',
+  'workspaces.empty': '暂无工作区',
+  'workspaces.add': '添加工作区',
+  'workspaces.noSessions': '暂无会话',
 }
 
 const en: Record<LeftLayoutKey, string> = {
@@ -58,7 +74,13 @@ const en: Record<LeftLayoutKey, string> = {
   'more.hint': 'Checked functions appear in the function bar',
   'more.empty': 'No other functions',
   'tasks.placeholder': 'Recent ungrouped conversations will appear here',
+  'tasks.empty': 'No ungrouped conversations',
+  'tasks.more': 'Show more ({count})',
+  'tasks.less': 'Show less',
   'workspaces.placeholder': 'Registered workspaces will appear here',
+  'workspaces.empty': 'No workspaces',
+  'workspaces.add': 'Add workspace',
+  'workspaces.noSessions': 'No conversations',
 }
 
 /** One global function entry read from the sidebar panel list. */
@@ -76,6 +98,9 @@ interface LeftLayoutInjected {
   }
   selectPanel(id: string): void
   startSession(): void
+  openSession(id: string): void
+  openWorkspace(id: string): void
+  addWorkspace(): void
 }
 
 type LeftLayoutProps = PropsRuntime<'sidebar.workspaces'>
@@ -86,6 +111,12 @@ const STYLES = `
 html[data-dsh-left-layout-active] [class*="newSession"],
 html[data-dsh-left-layout-active] [class*="panelList"] {
   display: none !important;
+}
+
+/* Windows keeps a native New Session control in the title bar while the
+   sidebar is collapsed and the browsing region is unmounted. */
+html[data-windows-titlebar][data-dsh-left-layout-collapsed] [class*="newSession"] {
+  display: flex !important;
 }
 
 .dshLL_root {
@@ -256,6 +287,197 @@ html[data-dsh-left-layout-active] [class*="panelList"] {
 
 .dshLL_railButton[data-active="true"] {
   background: var(--dsw-specific-sidebar-nav-item-active, var(--dsw-alias-interactive-bg-hover));
+}
+
+.dshLL_sectionAction {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.dshLL_sectionActionButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, inherit);
+  cursor: pointer;
+}
+
+.dshLL_sectionActionButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.dshLL_wsGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.dshLL_wsRow {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-radius: var(--dsw-radius-md, 8px);
+}
+
+.dshLL_wsRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dshLL_wsChevron {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--dsw-radius-md, 8px);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, inherit);
+  cursor: pointer;
+}
+
+.dshLL_wsMain {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px 0 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dshLL_wsIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--dsw-alias-label-secondary, inherit);
+}
+
+.dshLL_wsTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshLL_wsCount {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.dshLL_wsSessions {
+  padding-left: 16px;
+}
+
+.dshLL_sessionRow {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  margin: 0;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: var(--dsw-radius-md, 8px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dshLL_sessionRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dshLL_statusDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-tertiary, currentColor);
+}
+
+.dshLL_statusDot[data-state="running"] {
+  background: var(--dsw-alias-state-success, #2fbf71);
+}
+
+.dshLL_statusDot[data-state="pending"] {
+  background: var(--dsw-alias-state-warning, #e6a23c);
+}
+
+.dshLL_statusDot[data-state="unread"] {
+  background: var(--dsw-alias-state-info, #6aa7ff);
+}
+
+.dshLL_sessionMain {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.dshLL_sessionTitle {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshLL_sessionMeta {
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.dshLL_moreLink {
+  display: block;
+  width: 100%;
+  margin: 2px 0 0;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--dsw-radius-md, 8px);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dshLL_moreLink:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary, inherit);
 }
 
 .dshLL_moreBackdrop {
@@ -447,6 +669,15 @@ function IconClock({ size = 16 }: { size?: number }): React.ReactElement {
   )
 }
 
+/** Plus glyph for the add-workspace action. */
+function IconPlus({ size = 14 }: { size?: number }): React.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 /** Pick a stable glyph for a global panel id. */
 function PanelIcon({ id, size = 16 }: { id: string; size?: number }): React.ReactElement {
   const key = id.toLowerCase()
@@ -476,12 +707,13 @@ function FunctionRow(props: {
   )
 }
 
-/** Render a section heading with an optional count. */
-function SectionHeader(props: { title: string; count: number }): React.ReactElement {
+/** Render a section heading with a count and an optional trailing action. */
+function SectionHeader(props: { title: string; count: number; action?: React.ReactNode }): React.ReactElement {
   return (
     <div className="dshLL_sectionHeader">
       <span className="dshLL_sectionTitle">{props.title}</span>
       <span className="dshLL_sectionCount">{props.count}</span>
+      {props.action === undefined ? null : <span className="dshLL_sectionAction">{props.action}</span>}
     </div>
   )
 }
@@ -573,7 +805,7 @@ function MoreMenu(props: {
   panels: readonly PanelItem[]
   promoted: ReadonlySet<string>
   onToggle(id: string, on: boolean): void
-  t(key: LeftLayoutKey): string
+  t: LayoutT
 }): React.ReactElement {
   const { anchor, panels, promoted, onToggle, t } = props
   return createPortal(
@@ -611,6 +843,176 @@ function MoreMenu(props: {
   )
 }
 
+/** Minimal row shape the task list needs from a Session summary. */
+interface TaskRow {
+  id: string
+  displayTitle: string
+  updatedAt: number
+}
+
+/** Minimal status shape used by the row dot. */
+interface TaskStatus {
+  running?: boolean
+  pendingInteraction?: unknown
+  completionUnread?: boolean
+}
+
+/** Derive the ungrouped task digest: recent five, remainder, total. */
+function deriveTasks(sessions: SessionListState, workspaces: WorkspaceSnapshot): {
+  total: number
+  visible: TaskRow[]
+  rest: TaskRow[]
+} {
+  const assigned = new Set<string>()
+  for (const workspace of workspaces.items) {
+    for (const id of workspace.sessionIds) assigned.add(String(id))
+  }
+  const archived = new Set<string>(workspaces.archivedSessionIds.map(String))
+  const rows: TaskRow[] = []
+  for (const id of sessions.ids) {
+    const summary = sessions.byId[id]
+    if (summary === undefined) continue
+    const key = String(id)
+    if (assigned.has(key) || archived.has(key)) continue
+    if (summary.origin === 'subagent' || summary.blank) continue
+    rows.push({ id: key, displayTitle: summary.displayTitle, updatedAt: summary.updatedAt })
+  }
+  rows.sort((left, right) => right.updatedAt - left.updatedAt)
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
+  const visible = rows.filter((row) => row.updatedAt >= cutoff).slice(0, 5)
+  const visibleIds = new Set(visible.map((row) => row.id))
+  const rest = rows.filter((row) => !visibleIds.has(row.id))
+  return { total: rows.length, visible, rest }
+}
+
+const RELATIVE_TIME = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto', style: 'short' })
+const CALENDAR_DATE = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+
+/** Human-facing update timestamp: relative for the recent month, calendar beyond. */
+function formatUpdatedAt(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return ''
+  const diff = value - Date.now()
+  const size = Math.abs(diff)
+  if (size < 60_000) return RELATIVE_TIME.format(0, 'second')
+  if (size < 3_600_000) return RELATIVE_TIME.format(Math.round(diff / 60_000), 'minute')
+  if (size < 86_400_000) return RELATIVE_TIME.format(Math.round(diff / 3_600_000), 'hour')
+  if (size < 30 * 86_400_000) return RELATIVE_TIME.format(Math.round(diff / 86_400_000), 'day')
+  return CALENDAR_DATE.format(value)
+}
+
+/** One ungrouped conversation row. */
+function TaskRowView(props: {
+  row: TaskRow
+  status: TaskStatus | undefined
+  onOpen(id: string): void
+}): React.ReactElement {
+  const { row, status, onOpen } = props
+  const dot = status?.pendingInteraction !== undefined && status?.pendingInteraction !== null
+    ? 'pending'
+    : status?.running === true
+      ? 'running'
+      : status?.completionUnread === true
+        ? 'unread'
+        : 'idle'
+  return (
+    <button
+      type="button"
+      className="dshLL_sessionRow"
+      title={row.displayTitle}
+      onClick={() => onOpen(row.id)}
+    >
+      <span className="dshLL_statusDot" data-state={dot} aria-hidden="true" />
+      <span className="dshLL_sessionMain">
+        <span className="dshLL_sessionTitle">{row.displayTitle}</span>
+        <span className="dshLL_sessionMeta">{formatUpdatedAt(row.updatedAt)}</span>
+      </span>
+    </button>
+  )
+}
+
+/** Disclosure chevron for a workspace group. */
+function IconChevron({ open, size = 14 }: { open: boolean; size?: number }): React.ReactElement {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      style={{ transform: open ? 'rotate(90deg)' : undefined, transition: 'transform 120ms ease' }}
+    >
+      <path d="m6 3.8 4.2 4.2L6 12.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/** Select the visible Sessions accounted to one Workspace. */
+function deriveWorkspaceSessions(
+  workspace: WorkspaceView,
+  sessions: SessionListState,
+  archived: ReadonlySet<string>,
+): TaskRow[] {
+  const rows: TaskRow[] = []
+  for (const id of workspace.sessionIds) {
+    const summary = sessions.byId[id]
+    if (summary === undefined) continue
+    const key = String(id)
+    if (archived.has(key) || summary.origin === 'subagent' || summary.blank) continue
+    rows.push({ id: key, displayTitle: summary.displayTitle, updatedAt: summary.updatedAt })
+  }
+  rows.sort((left, right) => right.updatedAt - left.updatedAt)
+  return rows
+}
+
+/** One workspace row, expanding to its conversations. */
+function WorkspaceGroup(props: {
+  workspace: WorkspaceView
+  rows: readonly TaskRow[]
+  statusOf(id: string): TaskStatus | undefined
+  openWorkspace(id: string): void
+  openSession(id: string): void
+  t: LayoutT
+}): React.ReactElement {
+  const { workspace, rows, statusOf, openWorkspace, openSession, t } = props
+  const [expanded, setExpanded] = React.useState(false)
+  return (
+    <div className="dshLL_wsGroup">
+      <div className="dshLL_wsRow">
+        <button
+          type="button"
+          className="dshLL_wsChevron"
+          aria-expanded={expanded}
+          aria-label={t('section.workspaces')}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <IconChevron open={expanded} />
+        </button>
+        <button
+          type="button"
+          className="dshLL_wsMain"
+          title={workspace.path}
+          onClick={() => openWorkspace(String(workspace.workspaceId))}
+        >
+          <span className="dshLL_wsIcon"><IconWorkspace size={14} /></span>
+          <span className="dshLL_wsTitle">{workspace.title}</span>
+          <span className="dshLL_wsCount">{rows.length}</span>
+        </button>
+      </div>
+      {expanded ? (
+        <div className="dshLL_wsSessions">
+          {rows.length === 0 ? (
+            <div className="dshLL_placeholder">{t('workspaces.noSessions')}</div>
+          ) : (
+            rows.map((row) => (
+              <TaskRowView key={row.id} row={row} status={statusOf(row.id)} onOpen={openSession} />
+            ))
+          )}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 /** The top function bar: New Session plus promoted functions plus More. */
 function FunctionBar(props: {
   wide: boolean
@@ -618,7 +1020,7 @@ function FunctionBar(props: {
   activePanelId: string | null
   selectPanel(id: string): void
   startSession(): void
-  t(key: LeftLayoutKey): string
+  t: LayoutT
 }): React.ReactElement {
   const { wide, panels, activePanelId, selectPanel, startSession, t } = props
   const [promoted, setPromoted] = React.useState<string[]>(readPromoted)
@@ -743,8 +1145,12 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
     panels,
     selectPanel,
     startSession,
+    openSession,
+    openWorkspace,
+    addWorkspace,
     useSessions,
     useWorkspaces,
+    useSessionStatus,
     usePanelInfo,
     t,
   } = props
@@ -755,7 +1161,16 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
   )
   const sessions = useSessions((state) => state)
   const workspaces = useWorkspaces((state) => state)
+  const sessionStatus = useSessionStatus((state) => state)
   const activePanelId = usePanelInfo((info) => info.activePanelId)
+  const [tasksExpanded, setTasksExpanded] = React.useState(false)
+  const tasks = React.useMemo(() => deriveTasks(sessions, workspaces), [sessions, workspaces])
+  const taskRows = tasksExpanded ? [...tasks.visible, ...tasks.rest] : tasks.visible
+  const archivedSessions = React.useMemo(
+    () => new Set<string>(workspaces.archivedSessionIds.map(String)),
+    [workspaces.archivedSessionIds],
+  )
+  const statusOf = (id: string): TaskStatus | undefined => sessionStatus.get(id as never)
 
   React.useLayoutEffect(() => {
     document.documentElement.setAttribute('data-dsh-left-layout-active', '')
@@ -763,6 +1178,15 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
       document.documentElement.removeAttribute('data-dsh-left-layout-active')
     }
   }, [])
+
+  React.useLayoutEffect(() => {
+    const root = document.documentElement
+    if (wide) root.removeAttribute('data-dsh-left-layout-collapsed')
+    else root.setAttribute('data-dsh-left-layout-collapsed', '')
+    return () => {
+      root.removeAttribute('data-dsh-left-layout-collapsed')
+    }
+  }, [wide])
 
   return (
     <div className="dshLL_root">
@@ -778,16 +1202,65 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
       {wide ? (
         <>
           <div className="dshLL_middle">
-            <SectionHeader title={t('section.tasks')} count={sessions.ids.length} />
+            <SectionHeader title={t('section.tasks')} count={tasks.total} />
             <div className="dshLL_scroll">
-              <div className="dshLL_placeholder">{t('tasks.placeholder')}</div>
+              {taskRows.length === 0 ? (
+                <div className="dshLL_placeholder">{t('tasks.empty')}</div>
+              ) : (
+                taskRows.map((row) => (
+                  <TaskRowView
+                    key={row.id}
+                    row={row}
+                    status={sessionStatus.get(row.id as never)}
+                    onOpen={openSession}
+                  />
+                ))
+              )}
+              {tasks.rest.length > 0 ? (
+                <button
+                  type="button"
+                  className="dshLL_moreLink"
+                  aria-expanded={tasksExpanded}
+                  onClick={() => setTasksExpanded((value) => !value)}
+                >
+                  {tasksExpanded ? t('tasks.less') : t('tasks.more', { count: tasks.rest.length })}
+                </button>
+              ) : null}
             </div>
           </div>
 
           <div className="dshLL_bottom">
-            <SectionHeader title={t('section.workspaces')} count={workspaces.items.length} />
+            <SectionHeader
+              title={t('section.workspaces')}
+              count={workspaces.items.length}
+              action={(
+                <button
+                  type="button"
+                  className="dshLL_sectionActionButton"
+                  aria-label={t('workspaces.add')}
+                  title={t('workspaces.add')}
+                  onClick={addWorkspace}
+                >
+                  <IconPlus />
+                </button>
+              )}
+            />
             <div className="dshLL_scroll">
-              <div className="dshLL_placeholder">{t('workspaces.placeholder')}</div>
+              {workspaces.items.length === 0 ? (
+                <div className="dshLL_placeholder">{t('workspaces.empty')}</div>
+              ) : (
+                workspaces.items.map((workspace) => (
+                  <WorkspaceGroup
+                    key={String(workspace.workspaceId)}
+                    workspace={workspace}
+                    rows={deriveWorkspaceSessions(workspace, sessions, archivedSessions)}
+                    statusOf={statusOf}
+                    openWorkspace={openWorkspace}
+                    openSession={openSession}
+                    t={t}
+                  />
+                ))
+              )}
             </div>
           </div>
         </>
@@ -827,6 +1300,24 @@ export function apply(ctx: Context): void {
       },
       startSession: () => {
         ctx.uiWorkspace.startSession()
+      },
+      openSession: (id) => {
+        ctx.uiWorkspace.openSession(id as never)
+      },
+      openWorkspace: (id) => {
+        void ctx.uiWorkspace.openWorkspace(id as never)
+      },
+      addWorkspace: () => {
+        void (async () => {
+          try {
+            const path = await ctx.uiWorkspace.pickDirectory()
+            if (path === null) return
+            const created = await ctx.workspaces.create({ path })
+            void ctx.uiWorkspace.openWorkspace(created.workspaceId as never)
+          } catch (error) {
+            console.warn('[dsh-left-layout] add workspace failed', error)
+          }
+        })()
       },
     }),
   }, LeftLayoutRegion as never))
