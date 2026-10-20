@@ -12,7 +12,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 
 /** Client services this plugin needs. */
-export const inject = ['slots', 'locale', 'layout', 'uiWorkspace', 'workspaces']
+export const inject = ['slots', 'locale', 'layout', 'uiWorkspace', 'workspaces', 'sessions', 'remote']
 
 const NS = 'leftLayout'
 
@@ -37,6 +37,30 @@ type LeftLayoutKey =
   | 'workspaces.empty'
   | 'workspaces.add'
   | 'workspaces.noSessions'
+  | 'actions.more'
+  | 'actions.openFolder'
+  | 'actions.rename'
+  | 'actions.deleteWorkspace'
+  | 'actions.pin'
+  | 'actions.unpin'
+  | 'actions.archive'
+  | 'actions.deleteTask'
+  | 'actions.newConversation'
+  | 'dialog.renameWorkspace'
+  | 'dialog.renameSession'
+  | 'dialog.deleteWorkspace'
+  | 'dialog.deleteWorkspaceMessage'
+  | 'dialog.deleteTask'
+  | 'dialog.deleteTaskMessage'
+  | 'dialog.archive'
+  | 'dialog.archiveMessage'
+  | 'dialog.cancel'
+  | 'dialog.save'
+  | 'dialog.delete'
+  | 'dialog.confirmArchive'
+  | 'dialog.processing'
+  | 'dialog.empty'
+  | 'dialog.failed'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -63,6 +87,30 @@ const zh: Record<LeftLayoutKey, string> = {
   'workspaces.empty': '暂无工作区',
   'workspaces.add': '添加工作区',
   'workspaces.noSessions': '暂无会话',
+  'actions.more': '更多操作',
+  'actions.openFolder': '打开本地文件夹',
+  'actions.rename': '重命名',
+  'actions.deleteWorkspace': '删除该工作区',
+  'actions.pin': '置顶',
+  'actions.unpin': '取消置顶',
+  'actions.archive': '归档',
+  'actions.deleteTask': '删除任务',
+  'actions.newConversation': '在此工作区新建对话',
+  'dialog.renameWorkspace': '重命名工作区',
+  'dialog.renameSession': '重命名对话',
+  'dialog.deleteWorkspace': '删除该工作区？',
+  'dialog.deleteWorkspaceMessage': '只删除工作区登记，不删除目录和会话日志。',
+  'dialog.deleteTask': '删除任务？',
+  'dialog.deleteTaskMessage': '该对话将从任务区隐藏，不会删除会话日志。',
+  'dialog.archive': '归档任务？',
+  'dialog.archiveMessage': '归档后将从任务区移除；若仍在运行，会先停止其工作。',
+  'dialog.cancel': '取消',
+  'dialog.save': '保存',
+  'dialog.delete': '删除',
+  'dialog.confirmArchive': '归档',
+  'dialog.processing': '处理中…',
+  'dialog.empty': '名称不能为空',
+  'dialog.failed': '操作失败',
 }
 
 const en: Record<LeftLayoutKey, string> = {
@@ -84,6 +132,30 @@ const en: Record<LeftLayoutKey, string> = {
   'workspaces.empty': 'No workspaces',
   'workspaces.add': 'Add workspace',
   'workspaces.noSessions': 'No conversations',
+  'actions.more': 'More actions',
+  'actions.openFolder': 'Open local folder',
+  'actions.rename': 'Rename',
+  'actions.deleteWorkspace': 'Delete this workspace',
+  'actions.pin': 'Pin to top',
+  'actions.unpin': 'Unpin',
+  'actions.archive': 'Archive',
+  'actions.deleteTask': 'Delete task',
+  'actions.newConversation': 'New conversation in this workspace',
+  'dialog.renameWorkspace': 'Rename workspace',
+  'dialog.renameSession': 'Rename conversation',
+  'dialog.deleteWorkspace': 'Delete this workspace?',
+  'dialog.deleteWorkspaceMessage': 'Only the workspace registration is removed; the directory and session logs stay.',
+  'dialog.deleteTask': 'Delete task?',
+  'dialog.deleteTaskMessage': 'The conversation is hidden from the task area; its session log is not deleted.',
+  'dialog.archive': 'Archive task?',
+  'dialog.archiveMessage': 'The task leaves the task area; running work is stopped first.',
+  'dialog.cancel': 'Cancel',
+  'dialog.save': 'Save',
+  'dialog.delete': 'Delete',
+  'dialog.confirmArchive': 'Archive',
+  'dialog.processing': 'Working…',
+  'dialog.empty': 'Name cannot be empty',
+  'dialog.failed': 'Operation failed',
 }
 
 /** One global function entry read from the sidebar panel list. */
@@ -104,6 +176,21 @@ interface LeftLayoutInjected {
   openSession(id: string): void
   openWorkspace(id: string): void
   addWorkspace(): void
+  pinSession(id: string): void
+  unpinSession(id: string): void
+  archiveSession(id: string, stopActivity: boolean): Promise<void>
+  renameSession(id: string, title: string): Promise<void>
+  renameWorkspace(id: string, title: string): Promise<void>
+  deleteWorkspace(id: string): Promise<void>
+  openPath(path: string): void
+}
+
+/** Minimal shape of the generated Remote session endpoint used to reveal a path. */
+interface RemoteSessionFace {
+  openWorkspacePath?: (
+    request: { path: string; action?: 'reveal' },
+    signal: AbortSignal,
+  ) => Promise<unknown>
 }
 
 type LeftLayoutProps = PropsRuntime<'sidebar.workspaces'>
@@ -143,12 +230,11 @@ html[data-windows-titlebar][data-dsh-left-layout-collapsed] [class*="newSession"
 
 .dshLL_sectionLabel {
   padding: 6px 8px 4px;
-  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary, inherit));
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 16px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  color: var(--dsw-alias-label-secondary, inherit);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  letter-spacing: 0.02em;
 }
 
 .dshLL_functionList {
@@ -222,12 +308,11 @@ html[data-windows-titlebar][data-dsh-left-layout-collapsed] [class*="newSession"
 
 .dshLL_sectionTitle {
   flex: none;
-  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary, inherit));
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 16px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  color: var(--dsw-alias-label-secondary, inherit);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  letter-spacing: 0.02em;
 }
 
 .dshLL_sectionCount {
@@ -258,7 +343,6 @@ html[data-windows-titlebar][data-dsh-left-layout-collapsed] [class*="newSession"
   min-height: 0;
   max-height: 44%;
   padding: 2px 8px 8px;
-  border-top: 1px solid var(--dsw-alias-border-l1, transparent);
 }
 
 .dshLL_rail {
@@ -399,24 +483,42 @@ html[data-windows-titlebar][data-dsh-left-layout-collapsed] [class*="newSession"
 
 .dshLL_sessionRow {
   box-sizing: border-box;
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
   width: 100%;
   min-height: 42px;
   margin: 0;
-  padding: 5px 10px;
-  border: 0;
+  padding: 2px 6px 2px 10px;
   border-radius: var(--dsw-radius-md, 8px);
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
-  cursor: pointer;
 }
 
 .dshLL_sessionRow:hover {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dshLL_sessionMainButton {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 38px;
+  margin: 0;
+  padding: 3px 0;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .dshLL_statusDot {
@@ -462,6 +564,43 @@ html[data-windows-titlebar][data-dsh-left-layout-collapsed] [class*="newSession"
   line-height: 16px;
 }
 
+.dshLL_rowActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.dshLL_sessionRow:hover .dshLL_rowActions,
+.dshLL_sessionRow:focus-within .dshLL_rowActions,
+.dshLL_sessionRow[data-menu-open="true"] .dshLL_rowActions,
+.dshLL_wsRow:hover .dshLL_rowActions,
+.dshLL_wsRow:focus-within .dshLL_rowActions,
+.dshLL_wsRow[data-menu-open="true"] .dshLL_rowActions {
+  opacity: 1;
+}
+
+.dshLL_rowAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, inherit);
+  cursor: pointer;
+}
+
+.dshLL_rowAction:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
 .dshLL_moreLink {
   display: block;
   width: 100%;
@@ -481,6 +620,181 @@ html[data-windows-titlebar][data-dsh-left-layout-collapsed] [class*="newSession"
 .dshLL_moreLink:hover {
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary, inherit);
+}
+
+.dshLL_actionBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  background: transparent;
+}
+
+.dshLL_actionMenu {
+  position: fixed;
+  z-index: 1301;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 5px;
+  border: 1px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.22));
+  border-radius: var(--dsw-radius-panel, 12px);
+  background: var(--dsw-alias-bg-layer-2, #1f1f1f);
+  box-shadow: var(--dsw-elevation-prominent, 0 12px 32px rgba(0, 0, 0, 0.32));
+  color: var(--dsw-alias-label-primary, inherit);
+  font-family: inherit;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.dshLL_actionItem {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  margin: 0;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dshLL_actionItem:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dshLL_actionDanger {
+  color: var(--dsw-alias-state-error, #e5484d);
+}
+
+.dshLL_actionDanger:hover {
+  background: color-mix(in srgb, var(--dsw-alias-state-error, #e5484d) 12%, transparent);
+}
+
+.dshLL_actionSeparator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.22));
+}
+
+.dshLL_dialogBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.38);
+}
+
+.dshLL_dialog {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(380px, calc(100vw - 32px));
+  padding: 18px;
+  border: 1px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.22));
+  border-radius: var(--dsw-radius-panel, 12px);
+  background: var(--dsw-alias-bg-layer-2, #1f1f1f);
+  box-shadow: var(--dsw-elevation-prominent, 0 16px 40px rgba(0, 0, 0, 0.4));
+  color: var(--dsw-alias-label-primary, inherit);
+  font-family: inherit;
+}
+
+.dshLL_dialogTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.dshLL_dialogMessage {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary, inherit);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.dshLL_dialogInput {
+  box-sizing: border-box;
+  width: 100%;
+  height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.32));
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: var(--dsw-alias-bg-layer-1, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+
+.dshLL_dialogInput:focus {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, #6aa7ff));
+  outline-offset: -1px;
+}
+
+.dshLL_dialogError {
+  color: var(--dsw-alias-state-error, #e5484d);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.dshLL_dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dshLL_dialogButton {
+  box-sizing: border-box;
+  min-width: 64px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.32));
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.dshLL_dialogButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dshLL_dialogButton:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.dshLL_dialogPrimary {
+  border-color: transparent;
+  background: var(--dsw-alias-button-primary-fill, var(--dsw-specific-sidebar-nav-item-active, #4d6bfe));
+  color: var(--dsw-alias-label-primary-inverted, #fff);
+}
+
+.dshLL_dialogPrimary:hover {
+  background: var(--dsw-alias-button-primary-hover, var(--dsw-specific-sidebar-nav-item-active, #3f59d8));
+}
+
+.dshLL_dialogDanger {
+  border-color: transparent;
+  background: var(--dsw-alias-state-error, #e5484d);
+  color: #fff;
+}
+
+.dshLL_dialogDanger:hover {
+  background: color-mix(in srgb, var(--dsw-alias-state-error, #e5484d) 85%, #000);
 }
 
 .dshLL_moreBackdrop {
@@ -846,11 +1160,250 @@ function MoreMenu(props: {
   )
 }
 
+/** One entry in a row action menu. */
+interface ActionMenuItem {
+  id: string
+  label: string
+  danger?: boolean
+  onSelect(): void
+}
+
+interface MenuAnchor {
+  top: number
+  left: number
+  width: number
+}
+
+/** Position a menu near its trigger, flipping upward when the viewport is short. */
+function menuAnchor(rect: DOMRect, itemCount: number, width = 190): MenuAnchor {
+  const height = itemCount * 32 + 12
+  const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8))
+  let top = rect.bottom + 4
+  if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - 4)
+  return { top, left, width }
+}
+
+/** Floating vertical action list used by task and workspace rows. */
+function ActionMenu(props: {
+  anchor: MenuAnchor
+  items: readonly ActionMenuItem[]
+  onClose(): void
+}): React.ReactElement {
+  const { anchor, items, onClose } = props
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose()
+    }
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target as Element | null
+      if (target !== null && target.closest('.dshLL_actionMenu') !== null) return
+      onClose()
+    }
+    const onResize = (): void => onClose()
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('resize', onResize)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [onClose])
+
+  return createPortal(
+    <>
+      <div className="dshLL_actionBackdrop" onPointerDown={onClose} />
+      <div
+        className="dshLL_actionMenu"
+        role="menu"
+        style={{ top: anchor.top, left: anchor.left, width: anchor.width }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        {items.map((item, index) => (
+          <React.Fragment key={item.id}>
+            {index > 0 && (item.danger === true || item.id === 'delete-workspace' || item.id === 'delete-task' || item.id === 'archive') ? (
+              <div className="dshLL_actionSeparator" />
+            ) : null}
+            <button
+              type="button"
+              role="menuitem"
+              className={'dshLL_actionItem' + (item.danger === true ? ' dshLL_actionDanger' : '')}
+              onClick={() => {
+                onClose()
+                item.onSelect()
+              }}
+            >
+              {item.label}
+            </button>
+          </React.Fragment>
+        ))}
+      </div>
+    </>,
+    document.body,
+  )
+}
+
+/** Rename dialog shared by workspace and conversation rows. */
+function RenameDialog(props: {
+  title: string
+  initial: string
+  onCancel(): void
+  onSubmit(value: string): Promise<void>
+  t: LayoutT
+}): React.ReactElement {
+  const { title, initial, onCancel, onSubmit, t } = props
+  const [value, setValue] = React.useState(initial)
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  const submit = async (): Promise<void> => {
+    const next = value.trim()
+    if (next === '') {
+      setError(t('dialog.empty'))
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      await onSubmit(next)
+    } catch (failure) {
+      setError(failure instanceof Error && failure.message !== '' ? failure.message : t('dialog.failed'))
+      setBusy(false)
+    }
+  }
+
+  return createPortal(
+    <div
+      className="dshLL_dialogBackdrop"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget && !busy) onCancel()
+      }}
+    >
+      <div
+        className="dshLL_dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <h2 className="dshLL_dialogTitle">{title}</h2>
+        <input
+          ref={inputRef}
+          className="dshLL_dialogInput"
+          value={value}
+          disabled={busy}
+          onChange={(event) => setValue(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              void submit()
+            } else if (event.key === 'Escape' && !busy) {
+              onCancel()
+            }
+          }}
+        />
+        {error === null ? null : <div className="dshLL_dialogError">{error}</div>}
+        <div className="dshLL_dialogActions">
+          <button type="button" className="dshLL_dialogButton" disabled={busy} onClick={onCancel}>
+            {t('dialog.cancel')}
+          </button>
+          <button
+            type="button"
+            className="dshLL_dialogButton dshLL_dialogPrimary"
+            disabled={busy}
+            onClick={() => void submit()}
+          >
+            {busy ? t('dialog.processing') : t('dialog.save')}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+/** Confirmation dialog for archive and destructive row actions. */
+function ConfirmDialog(props: {
+  title: string
+  message: string
+  confirmLabel: string
+  danger?: boolean
+  onCancel(): void
+  onConfirm(): Promise<void> | void
+  t: LayoutT
+}): React.ReactElement {
+  const { title, message, confirmLabel, danger, onCancel, onConfirm, t } = props
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape' && !busy) onCancel()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [busy, onCancel])
+
+  const confirm = async (): Promise<void> => {
+    setBusy(true)
+    setError(null)
+    try {
+      await onConfirm()
+    } catch (failure) {
+      setError(failure instanceof Error && failure.message !== '' ? failure.message : t('dialog.failed'))
+      setBusy(false)
+    }
+  }
+
+  return createPortal(
+    <div
+      className="dshLL_dialogBackdrop"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget && !busy) onCancel()
+      }}
+    >
+      <div
+        className="dshLL_dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <h2 className="dshLL_dialogTitle">{title}</h2>
+        <p className="dshLL_dialogMessage">{message}</p>
+        {error === null ? null : <div className="dshLL_dialogError">{error}</div>}
+        <div className="dshLL_dialogActions">
+          <button type="button" className="dshLL_dialogButton" disabled={busy} onClick={onCancel}>
+            {t('dialog.cancel')}
+          </button>
+          <button
+            type="button"
+            className={'dshLL_dialogButton ' + (danger === true ? 'dshLL_dialogDanger' : 'dshLL_dialogPrimary')}
+            disabled={busy}
+            onClick={() => void confirm()}
+          >
+            {busy ? t('dialog.processing') : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 /** Minimal row shape the task list needs from a Session summary. */
 interface TaskRow {
   id: string
   displayTitle: string
   updatedAt: number
+  cwd?: string
+  pinned: boolean
 }
 
 /** Minimal status shape used by the row dot. */
@@ -868,7 +1421,11 @@ function isDefaultWorkspace(workspace: WorkspaceView): boolean {
 }
 
 /** Derive the ungrouped task digest: recent five, remainder, total. */
-function deriveTasks(sessions: SessionListState, workspaces: WorkspaceSnapshot): {
+function deriveTasks(
+  sessions: SessionListState,
+  workspaces: WorkspaceSnapshot,
+  hidden: ReadonlySet<string>,
+): {
   total: number
   visible: TaskRow[]
   rest: TaskRow[]
@@ -880,17 +1437,33 @@ function deriveTasks(sessions: SessionListState, workspaces: WorkspaceSnapshot):
     for (const id of workspace.sessionIds) assigned.add(String(id))
   }
   const archived = new Set<string>(workspaces.archivedSessionIds.map(String))
+  const pinIndex = new Map<string, number>(workspaces.pinnedSessionIds.map((id, index) => [String(id), index]))
   const rows: TaskRow[] = []
   for (const id of sessions.ids) {
     const summary = sessions.byId[id]
     if (summary === undefined) continue
     const key = String(id)
-    if (archived.has(key)) continue
+    if (archived.has(key) || hidden.has(key)) continue
     if (assigned.has(key) && !defaultIds.has(key)) continue
     if (summary.origin === 'subagent' || summary.blank) continue
-    rows.push({ id: key, displayTitle: summary.displayTitle, updatedAt: summary.updatedAt })
+    rows.push({
+      id: key,
+      displayTitle: summary.displayTitle,
+      updatedAt: summary.updatedAt,
+      cwd: summary.cwd ?? defaultWorkspace?.path,
+      pinned: pinIndex.has(key),
+    })
   }
-  rows.sort((left, right) => right.updatedAt - left.updatedAt)
+  rows.sort((left, right) => {
+    const leftPin = pinIndex.get(left.id)
+    const rightPin = pinIndex.get(right.id)
+    if (leftPin !== undefined || rightPin !== undefined) {
+      if (leftPin === undefined) return 1
+      if (rightPin === undefined) return -1
+      return leftPin - rightPin
+    }
+    return right.updatedAt - left.updatedAt
+  })
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
   const visible = rows.filter((row) => row.updatedAt >= cutoff).slice(0, 5)
   const visibleIds = new Set(visible.map((row) => row.id))
@@ -913,13 +1486,20 @@ function formatUpdatedAt(value: number): string {
   return CALENDAR_DATE.format(value)
 }
 
-/** One ungrouped conversation row. */
+/** One conversation row used by both the task area and workspace groups. */
 function TaskRowView(props: {
   row: TaskRow
   status: TaskStatus | undefined
+  actions: LeftLayoutInjected
+  context: 'task' | 'workspace'
   onOpen(id: string): void
+  onHide?(id: string): void
+  t: LayoutT
 }): React.ReactElement {
-  const { row, status, onOpen } = props
+  const { row, status, actions, context, onOpen, onHide, t } = props
+  const [anchor, setAnchor] = React.useState<MenuAnchor | null>(null)
+  const [renameOpen, setRenameOpen] = React.useState(false)
+  const [confirm, setConfirm] = React.useState<'archive' | 'hide' | null>(null)
   const dot = status?.pendingInteraction !== undefined && status?.pendingInteraction !== null
     ? 'pending'
     : status?.running === true
@@ -927,19 +1507,110 @@ function TaskRowView(props: {
       : status?.completionUnread === true
         ? 'unread'
         : 'idle'
+
+  const items: ActionMenuItem[] = [
+    {
+      id: 'pin',
+      label: row.pinned ? t('actions.unpin') : t('actions.pin'),
+      onSelect: () => {
+        if (row.pinned) actions.unpinSession(row.id)
+        else actions.pinSession(row.id)
+      },
+    },
+    {
+      id: 'rename',
+      label: t('actions.rename'),
+      onSelect: () => setRenameOpen(true),
+    },
+    ...(row.cwd === undefined ? [] : [{
+      id: 'open-folder',
+      label: t('actions.openFolder'),
+      onSelect: () => actions.openPath(row.cwd as string),
+    }]),
+    {
+      id: 'archive',
+      label: t('actions.archive'),
+      onSelect: () => setConfirm('archive'),
+    },
+    ...(context === 'task' && onHide !== undefined ? [{
+      id: 'delete-task',
+      label: t('actions.deleteTask'),
+      danger: true,
+      onSelect: () => setConfirm('hide'),
+    }] : []),
+  ]
+
   return (
-    <button
-      type="button"
-      className="dshLL_sessionRow"
-      title={row.displayTitle}
-      onClick={() => onOpen(row.id)}
-    >
-      <span className="dshLL_statusDot" data-state={dot} aria-hidden="true" />
-      <span className="dshLL_sessionMain">
-        <span className="dshLL_sessionTitle">{row.displayTitle}</span>
-        <span className="dshLL_sessionMeta">{formatUpdatedAt(row.updatedAt)}</span>
+    <div className="dshLL_sessionRow" data-menu-open={anchor === null ? undefined : 'true'}>
+      <button
+        type="button"
+        className="dshLL_sessionMainButton"
+        title={row.displayTitle}
+        onClick={() => onOpen(row.id)}
+      >
+        <span className="dshLL_statusDot" data-state={dot} aria-hidden="true" />
+        <span className="dshLL_sessionMain">
+          <span className="dshLL_sessionTitle">{row.displayTitle}</span>
+          <span className="dshLL_sessionMeta">{formatUpdatedAt(row.updatedAt)}</span>
+        </span>
+      </button>
+      <span className="dshLL_rowActions">
+        <button
+          type="button"
+          className="dshLL_rowAction"
+          aria-label={t('actions.more')}
+          title={t('actions.more')}
+          onClick={(event) => {
+            event.stopPropagation()
+            setAnchor(menuAnchor(event.currentTarget.getBoundingClientRect(), items.length))
+          }}
+        >
+          <IconMore size={14} />
+        </button>
       </span>
-    </button>
+      {anchor === null ? null : (
+        <ActionMenu anchor={anchor} items={items} onClose={() => setAnchor(null)} />
+      )}
+      {renameOpen ? (
+        <RenameDialog
+          title={t('dialog.renameSession')}
+          initial={row.displayTitle}
+          t={t}
+          onCancel={() => setRenameOpen(false)}
+          onSubmit={async (value) => {
+            await actions.renameSession(row.id, value)
+            setRenameOpen(false)
+          }}
+        />
+      ) : null}
+      {confirm === 'archive' ? (
+        <ConfirmDialog
+          title={t('dialog.archive')}
+          message={t('dialog.archiveMessage')}
+          confirmLabel={t('dialog.confirmArchive')}
+          t={t}
+          onCancel={() => setConfirm(null)}
+          onConfirm={async () => {
+            await actions.archiveSession(row.id, true)
+            setConfirm(null)
+          }}
+        />
+      ) : null}
+      {confirm === 'hide' ? (
+        <ConfirmDialog
+          title={t('dialog.deleteTask')}
+          message={t('dialog.deleteTaskMessage')}
+          confirmLabel={t('dialog.delete')}
+          danger
+          t={t}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => {
+            onHide?.(row.id)
+            setConfirm(null)
+          }}
+        />
+      ) : null}
+    </div>
   )
 }
 
@@ -964,16 +1635,34 @@ function deriveWorkspaceSessions(
   workspace: WorkspaceView,
   sessions: SessionListState,
   archived: ReadonlySet<string>,
+  pinnedSessionIds: readonly string[],
+  hidden: ReadonlySet<string>,
 ): TaskRow[] {
+  const pinIndex = new Map<string, number>(pinnedSessionIds.map((id, index) => [String(id), index]))
   const rows: TaskRow[] = []
   for (const id of workspace.sessionIds) {
     const summary = sessions.byId[id]
     if (summary === undefined) continue
     const key = String(id)
-    if (archived.has(key) || summary.origin === 'subagent' || summary.blank) continue
-    rows.push({ id: key, displayTitle: summary.displayTitle, updatedAt: summary.updatedAt })
+    if (archived.has(key) || hidden.has(key) || summary.origin === 'subagent' || summary.blank) continue
+    rows.push({
+      id: key,
+      displayTitle: summary.displayTitle,
+      updatedAt: summary.updatedAt,
+      cwd: summary.cwd ?? workspace.path,
+      pinned: pinIndex.has(key),
+    })
   }
-  rows.sort((left, right) => right.updatedAt - left.updatedAt)
+  rows.sort((left, right) => {
+    const leftPin = pinIndex.get(left.id)
+    const rightPin = pinIndex.get(right.id)
+    if (leftPin !== undefined || rightPin !== undefined) {
+      if (leftPin === undefined) return 1
+      if (rightPin === undefined) return -1
+      return leftPin - rightPin
+    }
+    return right.updatedAt - left.updatedAt
+  })
   return rows
 }
 
@@ -982,15 +1671,38 @@ function WorkspaceGroup(props: {
   workspace: WorkspaceView
   rows: readonly TaskRow[]
   statusOf(id: string): TaskStatus | undefined
-  openWorkspace(id: string): void
+  actions: LeftLayoutInjected
   openSession(id: string): void
   t: LayoutT
 }): React.ReactElement {
-  const { workspace, rows, statusOf, openWorkspace, openSession, t } = props
+  const { workspace, rows, statusOf, actions, openSession, t } = props
+  const workspaceId = String(workspace.workspaceId)
   const [expanded, setExpanded] = React.useState(false)
+  const [anchor, setAnchor] = React.useState<MenuAnchor | null>(null)
+  const [renameOpen, setRenameOpen] = React.useState(false)
+  const [deleteOpen, setDeleteOpen] = React.useState(false)
+  const items: ActionMenuItem[] = [
+    {
+      id: 'open-folder',
+      label: t('actions.openFolder'),
+      onSelect: () => actions.openPath(workspace.path),
+    },
+    {
+      id: 'rename',
+      label: t('actions.rename'),
+      onSelect: () => setRenameOpen(true),
+    },
+    {
+      id: 'delete-workspace',
+      label: t('actions.deleteWorkspace'),
+      danger: true,
+      onSelect: () => setDeleteOpen(true),
+    },
+  ]
+
   return (
     <div className="dshLL_wsGroup">
-      <div className="dshLL_wsRow">
+      <div className="dshLL_wsRow" data-menu-open={anchor === null ? undefined : 'true'}>
         <button
           type="button"
           className="dshLL_wsChevron"
@@ -1004,12 +1716,39 @@ function WorkspaceGroup(props: {
           type="button"
           className="dshLL_wsMain"
           title={workspace.path}
-          onClick={() => openWorkspace(String(workspace.workspaceId))}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
         >
           <span className="dshLL_wsIcon"><IconWorkspace size={14} /></span>
           <span className="dshLL_wsTitle">{workspace.title}</span>
           <span className="dshLL_wsCount">{rows.length}</span>
         </button>
+        <span className="dshLL_rowActions">
+          <button
+            type="button"
+            className="dshLL_rowAction"
+            aria-label={t('actions.more')}
+            title={t('actions.more')}
+            onClick={(event) => {
+              event.stopPropagation()
+              setAnchor(menuAnchor(event.currentTarget.getBoundingClientRect(), items.length))
+            }}
+          >
+            <IconMore size={14} />
+          </button>
+          <button
+            type="button"
+            className="dshLL_rowAction"
+            aria-label={t('actions.newConversation')}
+            title={t('actions.newConversation')}
+            onClick={(event) => {
+              event.stopPropagation()
+              actions.openWorkspace(workspaceId)
+            }}
+          >
+            <IconNewChat size={14} />
+          </button>
+        </span>
       </div>
       {expanded ? (
         <div className="dshLL_wsSessions">
@@ -1017,10 +1756,47 @@ function WorkspaceGroup(props: {
             <div className="dshLL_placeholder">{t('workspaces.noSessions')}</div>
           ) : (
             rows.map((row) => (
-              <TaskRowView key={row.id} row={row} status={statusOf(row.id)} onOpen={openSession} />
+              <TaskRowView
+                key={row.id}
+                row={row}
+                status={statusOf(row.id)}
+                actions={actions}
+                context="workspace"
+                onOpen={openSession}
+                t={t}
+              />
             ))
           )}
         </div>
+      ) : null}
+      {anchor === null ? null : (
+        <ActionMenu anchor={anchor} items={items} onClose={() => setAnchor(null)} />
+      )}
+      {renameOpen ? (
+        <RenameDialog
+          title={t('dialog.renameWorkspace')}
+          initial={workspace.title}
+          t={t}
+          onCancel={() => setRenameOpen(false)}
+          onSubmit={async (value) => {
+            await actions.renameWorkspace(workspaceId, value)
+            setRenameOpen(false)
+          }}
+        />
+      ) : null}
+      {deleteOpen ? (
+        <ConfirmDialog
+          title={t('dialog.deleteWorkspace')}
+          message={t('dialog.deleteWorkspaceMessage')}
+          confirmLabel={t('dialog.delete')}
+          danger
+          t={t}
+          onCancel={() => setDeleteOpen(false)}
+          onConfirm={async () => {
+            await actions.deleteWorkspace(workspaceId)
+            setDeleteOpen(false)
+          }}
+        />
       ) : null}
     </div>
   )
@@ -1161,6 +1937,29 @@ function FunctionBar(props: {
   )
 }
 
+const HIDDEN_TASKS_KEY = 'dsh-left-layout:hidden-tasks:v1'
+
+/** Read locally hidden task ids; malformed storage means nothing is hidden. */
+function readHiddenTasks(): string[] {
+  try {
+    const raw = window.localStorage.getItem(HIDDEN_TASKS_KEY)
+    if (raw === null) return []
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/** Persist the locally hidden task ids; storage failures are non-fatal. */
+function writeHiddenTasks(ids: readonly string[]): void {
+  try {
+    window.localStorage.setItem(HIDDEN_TASKS_KEY, JSON.stringify(ids))
+  } catch {
+    // Keep the in-memory state when storage is unavailable.
+  }
+}
+
 /** The three-section sidebar browsing region. */
 function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
   const {
@@ -1169,7 +1968,6 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
     selectPanel,
     startSession,
     openSession,
-    openWorkspace,
     addWorkspace,
     useSessions,
     useWorkspaces,
@@ -1187,7 +1985,20 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
   const sessionStatus = useSessionStatus((state) => state)
   const activePanelId = usePanelInfo((info) => info.activePanelId)
   const [tasksExpanded, setTasksExpanded] = React.useState(false)
-  const tasks = React.useMemo(() => deriveTasks(sessions, workspaces), [sessions, workspaces])
+  const [hiddenTasks, setHiddenTasks] = React.useState<string[]>(readHiddenTasks)
+  const hiddenSet = React.useMemo(() => new Set(hiddenTasks), [hiddenTasks])
+  const hideTask = (id: string): void => {
+    setHiddenTasks((current) => {
+      if (current.includes(id)) return current
+      const next = [...current, id]
+      writeHiddenTasks(next)
+      return next
+    })
+  }
+  const tasks = React.useMemo(
+    () => deriveTasks(sessions, workspaces, hiddenSet),
+    [sessions, workspaces, hiddenSet],
+  )
   const taskRows = tasksExpanded ? [...tasks.visible, ...tasks.rest] : tasks.visible
   const archivedSessions = React.useMemo(
     () => new Set<string>(workspaces.archivedSessionIds.map(String)),
@@ -1239,7 +2050,11 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
                     key={row.id}
                     row={row}
                     status={sessionStatus.get(row.id as never)}
+                    actions={props}
+                    context="task"
                     onOpen={openSession}
+                    onHide={hideTask}
+                    t={t}
                   />
                 ))
               )}
@@ -1280,9 +2095,15 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
                   <WorkspaceGroup
                     key={String(workspace.workspaceId)}
                     workspace={workspace}
-                    rows={deriveWorkspaceSessions(workspace, sessions, archivedSessions)}
+                    rows={deriveWorkspaceSessions(
+                      workspace,
+                      sessions,
+                      archivedSessions,
+                      workspaces.pinnedSessionIds,
+                      hiddenSet,
+                    )}
                     statusOf={statusOf}
-                    openWorkspace={openWorkspace}
+                    actions={props}
                     openSession={openSession}
                     t={t}
                   />
@@ -1316,6 +2137,8 @@ export function apply(ctx: Context): void {
   const panelSource = createPanelSource(ctx)
   ctx.effect(() => () => panelSource.dispose(), 'dsh-left-layout: panel source')
 
+  const remoteSession = (ctx as unknown as { remote?: { session?: RemoteSessionFace } }).remote?.session
+
   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register({
     name: 'sidebar.workspaces',
     priority: -1000,
@@ -1345,6 +2168,44 @@ export function apply(ctx: Context): void {
             console.warn('[dsh-left-layout] add workspace failed', error)
           }
         })()
+      },
+      pinSession: (id) => {
+        void ctx.uiWorkspace.pinSession(id as never).catch((error) => {
+          console.warn('[dsh-left-layout] pin failed', error)
+        })
+      },
+      unpinSession: (id) => {
+        void ctx.uiWorkspace.unpinSession(id as never).catch((error) => {
+          console.warn('[dsh-left-layout] unpin failed', error)
+        })
+      },
+      archiveSession: async (id, stopActivity) => {
+        await ctx.uiWorkspace.archiveSession(
+          id as never,
+          stopActivity ? { stopActivity: true } : undefined,
+        )
+      },
+      renameSession: async (id, title) => {
+        await ctx.sessions.using(id as never, { source: 'workspaceOperation' }, async (reference) => {
+          const result = await reference.binding.session.rename(title)
+          if (!result.ok) throw new Error(result.error.message)
+        })
+      },
+      renameWorkspace: async (id, title) => {
+        await ctx.workspaces.rename(id as never, title)
+      },
+      deleteWorkspace: async (id) => {
+        await ctx.workspaces.delete(id as never)
+      },
+      openPath: (path) => {
+        if (path === '') return
+        if (remoteSession?.openWorkspacePath === undefined) {
+          console.warn('[dsh-left-layout] native path opening is unavailable')
+          return
+        }
+        void remoteSession.openWorkspacePath({ path }, new AbortController().signal).catch((error) => {
+          console.warn('[dsh-left-layout] open path failed', error)
+        })
       },
     }),
   }, LeftLayoutRegion as never))

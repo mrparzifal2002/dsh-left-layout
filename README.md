@@ -40,7 +40,8 @@ sidebar immediately; re-enable it to bring the three-section layout back. The pl
 persistent data, and it removes its styles and DOM markers on unload.
 
 Promotion choices are stored per browser in `localStorage` under
-`dsh-left-layout:promoted:v1`.
+`dsh-left-layout:promoted:v1`; tasks removed with **Delete task** are stored under
+`dsh-left-layout:hidden-tasks:v1`.
 
 ## Behavior notes
 
@@ -54,6 +55,13 @@ Promotion choices are stored per browser in `localStorage` under
 - **Blank sessions** are not listed as conversations. The New Session button still creates one and
   the conversation view remains the place where it grows into a row.
 - **Archived sessions** and subagent-origin sessions are hidden from both sections.
+- **Workspace row actions**: hover a workspace row to reveal the three-dot menu and the
+  new-conversation button. Clicking the row (or its chevron) expands/collapses the workspace.
+  The menu offers **Open local folder**, **Rename**, and **Delete this workspace** (red).
+- **Task row actions**: hover a conversation to reveal its three-dot menu with **Pin to top**
+  (or **Unpin**), **Rename**, **Open local folder**, **Archive**, and **Delete task** (red).
+  Archive stops running work first. DSH does not delete Session logs, so **Delete task** only
+  hides the conversation from this sidebar; it is not a log deletion.
 
 ## Development
 
@@ -69,8 +77,8 @@ the entire feature is browser-side.
 
 ## Known limitations
 
-- Workspace row actions (rename/delete/reorder) are not exposed yet; use the native workspace
-  controls or the plugin manager for those operations.
+- Workspace drag-reorder is not exposed yet; rename, delete, and open-folder are available from
+  the hover menu. **Delete task** is a local hide, not a Session-log deletion.
 - The default-workspace match is a path/title convention of this DSH release. If a deployment
   changes that convention, the task area falls back to ungrouped conversations only.
 - On Windows the sidebar's collapsed state hides the browsing region; the native title-bar New
