@@ -2023,6 +2023,21 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
     }
   }, [])
 
+  React.useEffect(() => {
+    // The native New Session control stays visible in the Windows collapsed
+    // title bar; route it through the same default-workspace action.
+    const onNewSessionClick = (event: MouseEvent): void => {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      if (target.closest('[class*="newSession"]') === null) return
+      event.preventDefault()
+      event.stopPropagation()
+      startSession()
+    }
+    document.addEventListener('click', onNewSessionClick, true)
+    return () => document.removeEventListener('click', onNewSessionClick, true)
+  }, [startSession])
+
   React.useLayoutEffect(() => {
     const root = document.documentElement
     if (wide) root.removeAttribute('data-dsh-left-layout-collapsed')
