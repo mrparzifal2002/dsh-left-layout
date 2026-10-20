@@ -12,9 +12,10 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 
 /** Client services this plugin needs. */
-export const inject = ['slots', 'locale', 'layout', 'uiWorkspace', 'workspaces', 'sessions', 'remote']
+export const inject = ['slots', 'locale', 'layout', 'uiWorkspace', 'workspaces']
 
 const NS = 'leftLayout'
+
 
 type LayoutT = (key: LeftLayoutKey, params?: Record<string, unknown>) => string
 
@@ -1430,17 +1431,20 @@ function deriveTasks(
   visible: TaskRow[]
   rest: TaskRow[]
 } {
-  const defaultWorkspace = workspaces.items.find(isDefaultWorkspace)
-  const defaultIds = new Set<string>(defaultWorkspace === undefined ? [] : defaultWorkspace.sessionIds.map(String))
+  const items = workspaces.items ?? []
+  const archivedIds = workspaces.archivedSessionIds ?? []
+  const pinnedIds = workspaces.pinnedSessionIds ?? []
+  const defaultWorkspace = items.find(isDefaultWorkspace)
+  const defaultIds = new Set<string>(defaultWorkspace === undefined ? [] : (defaultWorkspace.sessionIds ?? []).map(String))
   const assigned = new Set<string>()
-  for (const workspace of workspaces.items) {
-    for (const id of workspace.sessionIds) assigned.add(String(id))
+  for (const workspace of items) {
+    for (const id of workspace.sessionIds ?? []) assigned.add(String(id))
   }
-  const archived = new Set<string>(workspaces.archivedSessionIds.map(String))
-  const pinIndex = new Map<string, number>(workspaces.pinnedSessionIds.map((id, index) => [String(id), index]))
+  const archived = new Set<string>(archivedIds.map(String))
+  const pinIndex = new Map<string, number>(pinnedIds.map((id, index) => [String(id), index]))
   const rows: TaskRow[] = []
-  for (const id of sessions.ids) {
-    const summary = sessions.byId[id]
+  for (const id of sessions.ids ?? []) {
+    const summary = sessions.byId?.[id]
     if (summary === undefined) continue
     const key = String(id)
     if (archived.has(key) || hidden.has(key)) continue
@@ -1638,10 +1642,10 @@ function deriveWorkspaceSessions(
   pinnedSessionIds: readonly string[],
   hidden: ReadonlySet<string>,
 ): TaskRow[] {
-  const pinIndex = new Map<string, number>(pinnedSessionIds.map((id, index) => [String(id), index]))
+  const pinIndex = new Map<string, number>((pinnedSessionIds ?? []).map((id, index) => [String(id), index]))
   const rows: TaskRow[] = []
-  for (const id of workspace.sessionIds) {
-    const summary = sessions.byId[id]
+  for (const id of workspace.sessionIds ?? []) {
+    const summary = sessions.byId?.[id]
     if (summary === undefined) continue
     const key = String(id)
     if (archived.has(key) || hidden.has(key) || summary.origin === 'subagent' || summary.blank) continue
@@ -2000,13 +2004,15 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
     [sessions, workspaces, hiddenSet],
   )
   const taskRows = tasksExpanded ? [...tasks.visible, ...tasks.rest] : tasks.visible
+  const workspaceItems = workspaces.items ?? []
+  const pinnedSessionIds = workspaces.pinnedSessionIds ?? []
   const archivedSessions = React.useMemo(
-    () => new Set<string>(workspaces.archivedSessionIds.map(String)),
+    () => new Set<string>((workspaces.archivedSessionIds ?? []).map(String)),
     [workspaces.archivedSessionIds],
   )
   const namedWorkspaces = React.useMemo(
-    () => workspaces.items.filter((workspace) => !isDefaultWorkspace(workspace)),
-    [workspaces.items],
+    () => workspaceItems.filter((workspace) => !isDefaultWorkspace(workspace)),
+    [workspaceItems],
   )
   const statusOf = (id: string): TaskStatus | undefined => sessionStatus.get(id as never)
 
@@ -2099,7 +2105,7 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
                       workspace,
                       sessions,
                       archivedSessions,
-                      workspaces.pinnedSessionIds,
+                      pinnedSessionIds,
                       hiddenSet,
                     )}
                     statusOf={statusOf}
@@ -2119,10 +2125,14 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
 
 /** Register the three-section browsing region and its supporting services. */
 export function apply(ctx: Context): void {
-  ctx.effect(
-    () => ctx.locale.register(NS, { zh, en }),
-    'dsh-left-layout: dictionaries',
-  )
+  ctx.effect(() => {
+    try {
+      return ctx.locale.register(NS, { zh, en })
+    } catch (error) {
+      console.warn('[dsh-left-layout] locale registration failed', error)
+      return () => {}
+    }
+  }, 'dsh-left-layout: dictionaries')
 
   ctx.effect(() => {
     const style = document.createElement('style')
@@ -2137,7 +2147,6 @@ export function apply(ctx: Context): void {
   const panelSource = createPanelSource(ctx)
   ctx.effect(() => () => panelSource.dispose(), 'dsh-left-layout: panel source')
 
-  const remoteSession = (ctx as unknown as { remote?: { session?: RemoteSessionFace } }).remote?.session
 
   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register({
     name: 'sidebar.workspaces',
@@ -2186,7 +2195,9 @@ export function apply(ctx: Context): void {
         )
       },
       renameSession: async (id, title) => {
-        await ctx.sessions.using(id as never, { source: 'workspaceOperation' }, async (reference) => {
+        const sessions = ctx.get('sessions', false) as typeof ctx.sessions | undefined
+        if (sessions === undefined) throw new Error('session service is unavailable')
+        await sessions.using(id as never, { source: 'workspaceOperation' }, async (reference) => {
           const result = await reference.binding.session.rename(title)
           if (!result.ok) throw new Error(result.error.message)
         })
@@ -2199,6 +2210,7 @@ export function apply(ctx: Context): void {
       },
       openPath: (path) => {
         if (path === '') return
+        const remoteSession = (ctx.get('remote', false) as { session?: RemoteSessionFace } | undefined)?.session
         if (remoteSession?.openWorkspacePath === undefined) {
           console.warn('[dsh-left-layout] native path opening is unavailable')
           return
