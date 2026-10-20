@@ -54,6 +54,9 @@ Promotion choices are stored per browser in `localStorage` under
   older conversations.
 - **Blank sessions** are not listed as conversations. The New Session button still creates one and
   the conversation view remains the place where it grows into a row.
+- **New Session target**: the button creates the conversation in the automatic default workspace
+  when that workspace is registered. If it is missing, the button falls back to the native
+  current/recent-workspace choice.
 - **Archived sessions** and subagent-origin sessions are hidden from both sections.
 - **Workspace row actions**: hover a workspace row to reveal the three-dot menu and the
   new-conversation button. Clicking the row (or its chevron) expands/collapses the workspace.
