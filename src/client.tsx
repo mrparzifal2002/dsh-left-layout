@@ -173,7 +173,7 @@ interface LeftLayoutInjected {
     subscribe(listener: () => void): () => void
   }
   selectPanel(id: string): void
-  startSession(workspaceId?: string): void
+  startSession(): void
   openSession(id: string): void
   openWorkspace(id: string): void
   addWorkspace(): void
@@ -1812,11 +1812,10 @@ function FunctionBar(props: {
   panels: readonly PanelItem[]
   activePanelId: string | null
   selectPanel(id: string): void
-  startSession(workspaceId?: string): void
-  defaultWorkspaceId?: string
+  startSession(): void
   t: LayoutT
 }): React.ReactElement {
-  const { wide, panels, activePanelId, selectPanel, startSession, defaultWorkspaceId, t } = props
+  const { wide, panels, activePanelId, selectPanel, startSession, t } = props
   const [promoted, setPromoted] = React.useState<string[]>(readPromoted)
   const promotedSet = React.useMemo(() => new Set(promoted), [promoted])
   const visible = panels.filter((panel) => promotedSet.has(panel.id))
@@ -1892,7 +1891,7 @@ function FunctionBar(props: {
         <div className="dshLL_top">
           <div className="dshLL_sectionLabel">{t('section.functions')}</div>
           <div className="dshLL_functionList">
-            <FunctionRow icon={<IconNewChat />} label={t('newSession')} onClick={() => startSession(defaultWorkspaceId)} />
+            <FunctionRow icon={<IconNewChat />} label={t('newSession')} onClick={startSession} />
             {visible.map((panel) => (
               <FunctionRow
                 key={panel.id}
@@ -1907,7 +1906,7 @@ function FunctionBar(props: {
         </div>
       ) : (
         <div className="dshLL_rail">
-          <button type="button" className="dshLL_railButton" aria-label={t('newSession')} title={t('newSession')} onClick={() => startSession(defaultWorkspaceId)}>
+          <button type="button" className="dshLL_railButton" aria-label={t('newSession')} title={t('newSession')} onClick={startSession}>
             <IconNewChat size={18} />
           </button>
           {visible.map((panel) => (
@@ -2015,10 +2014,6 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
     () => workspaceItems.filter((workspace) => !isDefaultWorkspace(workspace)),
     [workspaceItems],
   )
-  const defaultWorkspaceId = React.useMemo(() => {
-    const workspace = workspaceItems.find(isDefaultWorkspace)
-    return workspace === undefined ? undefined : String(workspace.workspaceId)
-  }, [workspaceItems])
   const statusOf = (id: string): TaskStatus | undefined => sessionStatus.get(id as never)
 
   React.useLayoutEffect(() => {
@@ -2045,7 +2040,6 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
         activePanelId={activePanelId}
         selectPanel={selectPanel}
         startSession={startSession}
-        defaultWorkspaceId={defaultWorkspaceId}
         t={t}
       />
 
@@ -2163,9 +2157,16 @@ export function apply(ctx: Context): void {
       selectPanel: (id) => {
         ctx.layout.selectPanel(id as never)
       },
-      startSession: (workspaceId) => {
-        if (workspaceId === undefined) ctx.uiWorkspace.startSession()
-        else ctx.uiWorkspace.startSession(workspaceId as never)
+      startSession: () => {
+        try {
+          const snapshot = ctx.workspaces.list.getSnapshot()
+          const defaultWorkspace = snapshot.items.find(isDefaultWorkspace)
+          if (defaultWorkspace === undefined) ctx.uiWorkspace.startSession()
+          else ctx.uiWorkspace.startSession(defaultWorkspace.workspaceId as never)
+        } catch (error) {
+          console.warn('[dsh-left-layout] default workspace lookup failed', error)
+          ctx.uiWorkspace.startSession()
+        }
       },
       openSession: (id) => {
         ctx.uiWorkspace.openSession(id as never)
