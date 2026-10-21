@@ -12,10 +12,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 
 /** Client services this plugin needs. */
-export const inject = ['slots', 'locale', 'layout', 'uiWorkspace', 'workspaces']
+export const inject = ['slots', 'locale', 'layout', 'uiWorkspace', 'workspaces', 'remote', 'remote.session']
 
 const NS = 'leftLayout'
-
 
 type LayoutT = (key: LeftLayoutKey, params?: Record<string, unknown>) => string
 
@@ -184,14 +183,6 @@ interface LeftLayoutInjected {
   renameWorkspace(id: string, title: string): Promise<void>
   deleteWorkspace(id: string): Promise<void>
   openPath(path: string): void
-}
-
-/** Minimal shape of the generated Remote session endpoint used to reveal a path. */
-interface RemoteSessionFace {
-  openWorkspacePath?: (
-    request: { path: string; action?: 'reveal' },
-    signal: AbortSignal,
-  ) => Promise<unknown>
 }
 
 type LeftLayoutProps = PropsRuntime<'sidebar.workspaces'>
@@ -2233,14 +2224,26 @@ export function apply(ctx: Context): void {
       },
       openPath: (path) => {
         if (path === '') return
-        const remoteSession = (ctx.get('remote', false) as { session?: RemoteSessionFace } | undefined)?.session
-        if (remoteSession?.openWorkspacePath === undefined) {
-          console.warn('[dsh-left-layout] native path opening is unavailable')
-          return
-        }
-        void remoteSession.openWorkspacePath({ path }, new AbortController().signal).catch((error) => {
-          console.warn('[dsh-left-layout] open path failed', error)
-        })
+        void (async () => {
+          try {
+            const remote = (ctx as unknown as {
+              remote: {
+                session: {
+                  openWorkspacePath(request: { path: string }): Promise<{
+                    ok: boolean
+                    error?: { message?: string }
+                  }>
+                }
+              }
+            }).remote
+            const result = await remote.session.openWorkspacePath({ path })
+            if (!result.ok) {
+              console.warn('[dsh-left-layout] open path failed', result.error)
+            }
+          } catch (error) {
+            console.warn('[dsh-left-layout] open path failed', error)
+          }
+        })()
       },
     }),
   }, LeftLayoutRegion as never))
