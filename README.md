@@ -43,6 +43,10 @@ Promotion choices are stored per browser in `localStorage` under
 `dsh-left-layout:promoted:v1`; tasks removed with **Delete task** are stored under
 `dsh-left-layout:hidden-tasks:v1`.
 
+In the **More** menu, each row has two independent gestures: the checkbox moves the function
+between the bar and More, while clicking the function icon/name opens that function and closes
+the menu.
+
 ## Behavior notes
 
 - **Default workspace**: the task area treats the product's automatic default workspace

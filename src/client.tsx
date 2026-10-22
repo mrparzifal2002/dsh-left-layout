@@ -25,6 +25,7 @@ type LeftLayoutKey =
   | 'newSession'
   | 'more'
   | 'more.title'
+  | 'more.promote'
   | 'more.count'
   | 'more.always'
   | 'more.hint'
@@ -75,6 +76,7 @@ const zh: Record<LeftLayoutKey, string> = {
   newSession: '新会话',
   more: '更多',
   'more.title': '提到外面',
+  'more.promote': '提到外面',
   'more.count': '更多（{count}）',
   'more.always': '常驻',
   'more.hint': '勾选后显示在功能栏',
@@ -120,6 +122,7 @@ const en: Record<LeftLayoutKey, string> = {
   newSession: 'New Session',
   more: 'More',
   'more.title': 'Show outside',
+  'more.promote': 'Show outside',
   'more.count': 'More ({count})',
   'more.always': 'Always',
   'more.hint': 'Checked functions appear in the function bar',
@@ -883,6 +886,45 @@ html[data-windows-titlebar][data-dsh-left-layout-collapsed] [class*="newSession"
   background: transparent;
 }
 
+.dshLL_menuRowButton {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dshLL_menuRowButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dshLL_menuRowOpen {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dshLL_menuRowOpen:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, #6aa7ff));
+  outline-offset: 2px;
+}
+
 .dshLL_menuCheck {
   flex: none;
   display: inline-flex;
@@ -1114,9 +1156,12 @@ function MoreMenu(props: {
   panels: readonly PanelItem[]
   promoted: ReadonlySet<string>
   onToggle(id: string, on: boolean): void
+  onOpen(id: string): void
+  onStartSession(): void
+  onClose(): void
   t: LayoutT
 }): React.ReactElement {
-  const { anchor, panels, promoted, onToggle, t } = props
+  const { anchor, panels, promoted, onToggle, onOpen, onStartSession, onClose, t } = props
   return createPortal(
     <div
       className="dshLL_moreMenu"
@@ -1126,24 +1171,51 @@ function MoreMenu(props: {
       onPointerDown={(event) => event.stopPropagation()}
     >
       <div className="dshLL_menuTitle">{t('more.title')}</div>
-      <div className="dshLL_menuFixed dshLL_menuRow">
+      <button
+        type="button"
+        className="dshLL_menuFixed dshLL_menuRow dshLL_menuRowButton"
+        onClick={() => {
+          onClose()
+          onStartSession()
+        }}
+      >
         <span className="dshLL_menuCheck">✓</span>
         <span className="dshLL_menuRowIcon"><IconNewChat /></span>
         <span className="dshLL_menuRowLabel">{t('newSession')}</span>
         <span className="dshLL_menuTag">{t('more.always')}</span>
-      </div>
+      </button>
       <div className="dshLL_menuList">
         {panels.length === 0 ? <div className="dshLL_menuEmpty">{t('more.empty')}</div> : null}
         {panels.map((panel) => (
-          <label key={panel.id} className="dshLL_menuRow">
+          <div
+            key={panel.id}
+            className="dshLL_menuRow"
+            onClick={(event) => {
+              const target = event.target as Element
+              if (target.closest('input') !== null) return
+              if (target.closest('button') !== null) return
+              onClose()
+              onOpen(panel.id)
+            }}
+          >
             <input
               type="checkbox"
               checked={promoted.has(panel.id)}
+              aria-label={t('more.promote')}
               onChange={(event) => onToggle(panel.id, event.currentTarget.checked)}
             />
-            <span className="dshLL_menuRowIcon"><PanelIcon id={panel.id} /></span>
-            <span className="dshLL_menuRowLabel">{panel.label}</span>
-          </label>
+            <button
+              type="button"
+              className="dshLL_menuRowOpen"
+              onClick={() => {
+                onClose()
+                onOpen(panel.id)
+              }}
+            >
+              <span className="dshLL_menuRowIcon"><PanelIcon id={panel.id} /></span>
+              <span className="dshLL_menuRowLabel">{panel.label}</span>
+            </button>
+          </div>
         ))}
       </div>
       <div className="dshLL_menuHint">{t('more.hint')}</div>
@@ -1924,6 +1996,9 @@ function FunctionBar(props: {
             panels={panels}
             promoted={promotedSet}
             onToggle={toggle}
+            onOpen={selectPanel}
+            onStartSession={startSession}
+            onClose={() => setOpen(false)}
             t={t}
           />
         </>
