@@ -1020,6 +1020,19 @@ function IconClock({ size = 16 }: { size?: number }): React.ReactElement {
   )
 }
 
+/** Container glyph for docker-backed global panels. */
+function IconDocker({ size = 16 }: { size?: number }): React.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3.2" y="9.6" width="4.4" height="4.4" rx="1" fill="currentColor" opacity="0.5" />
+      <rect x="8.8" y="9.6" width="4.4" height="4.4" rx="1" fill="currentColor" opacity="0.7" />
+      <rect x="14.4" y="9.6" width="4.4" height="4.4" rx="1" fill="currentColor" opacity="0.5" />
+      <rect x="8.8" y="4" width="4.4" height="4.4" rx="1" fill="currentColor" />
+      <rect x="5.6" y="15.2" width="12.8" height="4.4" rx="2.2" fill="currentColor" opacity="0.35" />
+    </svg>
+  )
+}
+
 /** Plus glyph for the add-workspace action. */
 function IconPlus({ size = 14 }: { size?: number }): React.ReactElement {
   return (
@@ -1032,6 +1045,7 @@ function IconPlus({ size = 14 }: { size?: number }): React.ReactElement {
 /** Pick a stable glyph for a global panel id. */
 function PanelIcon({ id, size = 16 }: { id: string; size?: number }): React.ReactElement {
   const key = id.toLowerCase()
+  if (key.includes('docker')) return <IconDocker size={size} />
   if (key.includes('plugin')) return <IconPlug size={size} />
   if (key.includes('schedule') || key.includes('cron')) return <IconClock size={size} />
   if (key.includes('task') || key.includes('goal') || key.includes('workflow')) return <IconChecklist size={size} />
