@@ -20,6 +20,7 @@ type LayoutT = (key: LeftLayoutKey, params?: Record<string, unknown>) => string
 
 type LeftLayoutKey =
   | 'section.functions'
+  | 'skills.open'
   | 'section.tasks'
   | 'section.workspaces'
   | 'newSession'
@@ -71,6 +72,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 const zh: Record<LeftLayoutKey, string> = {
   'section.functions': '功能',
+  'skills.open': '技能',
   'section.tasks': '任务',
   'section.workspaces': '工作区',
   newSession: '新会话',
@@ -117,6 +119,7 @@ const zh: Record<LeftLayoutKey, string> = {
 
 const en: Record<LeftLayoutKey, string> = {
   'section.functions': 'Functions',
+  'skills.open': 'Skills',
   'section.tasks': 'Tasks',
   'section.workspaces': 'Workspaces',
   newSession: 'New Session',
@@ -176,6 +179,7 @@ interface LeftLayoutInjected {
   }
   selectPanel(id: string): void
   startSession(): void
+  openSkills(): void
   openSession(id: string): void
   openWorkspace(id: string): void
   addWorkspace(): void
@@ -1057,6 +1061,15 @@ function IconDocker({ size = 16 }: { size?: number }): React.ReactElement {
       <rect x="14.4" y="9.6" width="4.4" height="4.4" rx="1" fill="currentColor" opacity="0.5" />
       <rect x="8.8" y="4" width="4.4" height="4.4" rx="1" fill="currentColor" />
       <rect x="5.6" y="15.2" width="12.8" height="4.4" rx="2.2" fill="currentColor" opacity="0.35" />
+    </svg>
+  )
+}
+
+/** Spark glyph for the skills manager entry. */
+function IconSkill({ size = 16 }: { size?: number }): React.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 1.6l1.55 3.26 3.55.52-2.57 2.5.61 3.54L8 9.75 4.86 11.42l.61-3.54L2.9 5.38l3.55-.52L8 1.6Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -1972,24 +1985,29 @@ function FunctionBar(props: {
   activePanelId: string | null
   selectPanel(id: string): void
   startSession(): void
+  openSkills(): void
   t: LayoutT
 }): React.ReactElement {
-  const { wide, panels, activePanelId, selectPanel, startSession, t } = props
+  const { wide, panels, activePanelId, selectPanel, startSession, openSkills, t } = props
   // The promotion array is both the membership set and the display order of
   // the bar: dragging rewrites it, so the order the user sees is the order
   // that survives a reload.
   const [promoted, setPromoted] = React.useState<string[]>(readPromoted)
   const promotedSet = React.useMemo(() => new Set(promoted), [promoted])
+  const availablePanels = React.useMemo(
+    () => panels.filter((panel) => panel.id !== 'skills-manager'),
+    [panels],
+  )
   const visible = React.useMemo(() => {
-    const byId = new Map(panels.map((panel) => [panel.id, panel]))
+    const byId = new Map(availablePanels.map((panel) => [panel.id, panel]))
     const rows: PanelItem[] = []
     for (const id of promoted) {
       const panel = byId.get(id)
       if (panel !== undefined) rows.push(panel)
     }
     return rows
-  }, [panels, promoted])
-  const hiddenCount = panels.length - visible.length
+  }, [availablePanels, promoted])
+  const hiddenCount = availablePanels.length - visible.length
   const [draggingId, setDraggingId] = React.useState<string | null>(null)
   const [dropEdge, setDropEdge] = React.useState<{ id: string; edge: DropEdge } | null>(null)
   const moreLabel = hiddenCount > 0 ? t('more.count', { count: hiddenCount }) : t('more')
@@ -2113,6 +2131,7 @@ function FunctionBar(props: {
           <div className="dshLL_sectionLabel">{t('section.functions')}</div>
           <div className="dshLL_functionList">
             <FunctionRow icon={<IconNewChat />} label={t('newSession')} onClick={startSession} />
+            <FunctionRow icon={<IconSkill />} label={t('skills.open')} onClick={openSkills} />
             {visible.map((panel) => (
               <FunctionRow
                 key={panel.id}
@@ -2130,6 +2149,9 @@ function FunctionBar(props: {
         <div className="dshLL_rail">
           <button type="button" className="dshLL_railButton" aria-label={t('newSession')} title={t('newSession')} onClick={startSession}>
             <IconNewChat size={18} />
+          </button>
+          <button type="button" className="dshLL_railButton" aria-label={t('skills.open')} title={t('skills.open')} onClick={openSkills}>
+            <IconSkill size={18} />
           </button>
           {visible.map((panel) => {
             const drag = dragHandle(panel.id)
@@ -2163,7 +2185,7 @@ function FunctionBar(props: {
           <div className="dshLL_moreBackdrop" onPointerDown={() => setOpen(false)} />
           <MoreMenu
             anchor={anchor}
-            panels={panels}
+            panels={availablePanels}
             promoted={promotedSet}
             onToggle={toggle}
             onOpen={selectPanel}
@@ -2207,6 +2229,7 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
     panels,
     selectPanel,
     startSession,
+    openSkills,
     openSession,
     addWorkspace,
     useSessions,
@@ -2291,6 +2314,7 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
         activePanelId={activePanelId}
         selectPanel={selectPanel}
         startSession={startSession}
+        openSkills={openSkills}
         t={t}
       />
 
@@ -2407,6 +2431,99 @@ export function apply(ctx: Context): void {
       panels: panelSource.source,
       selectPanel: (id) => {
         ctx.layout.selectPanel(id as never)
+      },
+      openSkills: () => {
+        try {
+          const mainEntries = ctx.slots.entriesOfSlot('main')
+          if (mainEntries.some((entry) => entry.options.key === 'skills-manager')) {
+            ctx.layout.selectPanel('skills-manager' as never)
+            return
+          }
+        } catch (error) {
+          console.warn('[dsh-left-layout] skills main panel lookup failed', error)
+        }
+
+        const pressSettingsShortcut = (altKey: boolean): void => {
+          try {
+            document.dispatchEvent(new KeyboardEvent('keydown', {
+              key: ',',
+              code: 'Comma',
+              ctrlKey: true,
+              altKey,
+              bubbles: true,
+              cancelable: true,
+            }))
+          } catch {
+            // Ignore synthetic keyboard failures.
+          }
+        }
+
+        const openSettings = (): void => {
+          const row = document.querySelector('[class*="triggerRow"]')
+          const account = row?.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')
+            ?? document.querySelector<HTMLButtonElement>('button[aria-label="账号菜单"]')
+          if (account !== null && account !== undefined) {
+            account.click()
+            window.setTimeout(() => {
+              const items = Array.from(document.querySelectorAll<HTMLButtonElement>('button[class*="_item_"]'))
+              const settingsItem = items.find((item) => {
+                const text = (item.textContent ?? '').trim()
+                return text.startsWith('设置') || text.toLowerCase().startsWith('settings')
+              })
+              if (settingsItem !== undefined) {
+                settingsItem.click()
+                return
+              }
+              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+              pressSettingsShortcut(false)
+              pressSettingsShortcut(true)
+            }, 250)
+            return
+          }
+          const fallback = document.querySelector<HTMLButtonElement>('[class*="triggerRow"] button[aria-haspopup="dialog"]')
+          if (fallback !== null) {
+            fallback.click()
+            return
+          }
+          pressSettingsShortcut(false)
+          pressSettingsShortcut(true)
+        }
+
+        const labelOfSkills = (): string => {
+          try {
+            const entries = (ctx.slots as unknown as {
+              entriesOfSlot(key: string): readonly {
+                options: { id?: string; label?: string | (() => string) }
+              }[]
+            }).entriesOfSlot('settings.section')
+            const entry = entries.find((item) => item.options.id === 'skills-manager')
+            const raw = entry?.options.label
+            const label = typeof raw === 'function' ? raw() : raw
+            if (typeof label === 'string' && label !== '') return label
+          } catch {
+            // Fall through to the default label.
+          }
+          return '技能'
+        }
+
+        openSettings()
+        const label = labelOfSkills()
+        let attempts = 0
+        const selectSection = (): void => {
+          const cells = Array.from(document.querySelectorAll<HTMLButtonElement>('[class*="navCell"]'))
+          const target = cells.find((cell) => (cell.textContent ?? '').includes(label))
+          if (target !== undefined) {
+            target.click()
+            return
+          }
+          if (attempts >= 60) {
+            console.warn('[dsh-left-layout] skills settings section not found')
+            return
+          }
+          attempts += 1
+          window.setTimeout(selectSection, 50)
+        }
+        window.setTimeout(selectSection, 50)
       },
       startSession: () => {
         try {
