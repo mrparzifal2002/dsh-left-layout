@@ -75,7 +75,7 @@ title-bar New Session control all stay where they were. Only the browsing region
 
 Requirements:
 
-| | |
+| Component | Requirement |
 |---|---|
 | DSH | `>=0.2.1-rc.2 <0.3.0-0` |
 | Node | `>=22.19.0` (only needed to build from source) |
