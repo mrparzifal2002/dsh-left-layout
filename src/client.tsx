@@ -169,7 +169,20 @@ interface PanelItem {
   id: string
   label: string
   order: number
+  /** Panel entries open a main panel; settings entries bridge to a Settings section. */
+  kind?: 'panel' | 'settings'
+  /** Stable settings.section id for a bridged feature. */
+  settingsSectionId?: string
 }
+
+/**
+ * Settings-only features that should appear as first-class functions.
+ * Adding one entry here is enough: promotion, the More menu, drag ordering,
+ * and persistence all reuse the generic function-list pipeline.
+ */
+const SETTINGS_FUNCTION_BRIDGES = [
+  { id: 'skills-manager', sectionId: 'skills-manager', order: 1 },
+] as const
 
 /** Registrant face delivered to the layout component. */
 interface LeftLayoutInjected {
@@ -179,7 +192,7 @@ interface LeftLayoutInjected {
   }
   selectPanel(id: string): void
   startSession(): void
-  openSkills(): void
+  openSettingsSection(sectionId: string): void
   openSession(id: string): void
   openWorkspace(id: string): void
   addWorkspace(): void
@@ -1086,6 +1099,7 @@ function IconPlus({ size = 14 }: { size?: number }): React.ReactElement {
 /** Pick a stable glyph for a global panel id. */
 function PanelIcon({ id, size = 16 }: { id: string; size?: number }): React.ReactElement {
   const key = id.toLowerCase()
+  if (key.includes('skill')) return <IconSkill size={size} />
   if (key.includes('docker')) return <IconDocker size={size} />
   if (key.includes('plugin')) return <IconPlug size={size} />
   if (key.includes('schedule') || key.includes('cron')) return <IconClock size={size} />
@@ -1184,8 +1198,39 @@ function createPanelSource(ctx: Context): {
       if (id === undefined) continue
       const raw = entry.options.label
       const label = typeof raw === 'function' ? raw() : raw
-      rows.push({ id, label: label ?? id, order: entry.options.order ?? 0 })
+      rows.push({ id, label: label ?? id, order: entry.options.order ?? 0, kind: 'panel' })
     }
+
+    // A settings-only feature has no sidebar panel entry. Bridge it into the
+    // same list so it participates in promotion and drag ordering unchanged.
+    let sections: readonly {
+      options: { id?: string; label?: string | (() => string) }
+    }[] = []
+    try {
+      sections = (ctx.slots as unknown as {
+        entriesOfSlot(key: string): readonly {
+          options: { id?: string; label?: string | (() => string) }
+        }[]
+      }).entriesOfSlot('settings.section')
+    } catch {
+      sections = []
+    }
+    const known = new Set(rows.map((row) => row.id))
+    for (const bridge of SETTINGS_FUNCTION_BRIDGES) {
+      if (known.has(bridge.id)) continue
+      const section = sections.find((entry) => entry.options.id === bridge.sectionId)
+      if (section === undefined) continue
+      const raw = section.options.label
+      const label = typeof raw === 'function' ? raw() : raw
+      rows.push({
+        id: bridge.id,
+        label: label ?? ctx.locale.bind(NS)('skills.open'),
+        order: bridge.order,
+        kind: 'settings',
+        settingsSectionId: bridge.sectionId,
+      })
+    }
+
     rows.sort((a, b) => a.order - b.order)
     return rows
   }
@@ -1206,6 +1251,9 @@ function createPanelSource(ctx: Context): {
   }
 
   const offSlots = ctx.slots.subscribe('sidebar.panellist', refresh)
+  const offSections = (ctx.slots as unknown as {
+    subscribe(key: string, fn: () => void): () => void
+  }).subscribe('settings.section', refresh)
   const offLocale = ctx.locale.subscribe(refresh)
   refresh()
 
@@ -1221,6 +1269,7 @@ function createPanelSource(ctx: Context): {
     },
     dispose: () => {
       offSlots()
+      offSections()
       offLocale()
       listeners.clear()
     },
@@ -1228,6 +1277,7 @@ function createPanelSource(ctx: Context): {
 }
 
 const PROMOTED_KEY = 'dsh-left-layout:promoted:v1'
+const SKILLS_SEED_KEY = 'dsh-left-layout:skills-seeded:v1'
 
 /**
  * Read the browser-local promotion list. The array doubles as the display
@@ -1985,29 +2035,47 @@ function FunctionBar(props: {
   activePanelId: string | null
   selectPanel(id: string): void
   startSession(): void
-  openSkills(): void
+  openSettingsSection(sectionId: string): void
   t: LayoutT
 }): React.ReactElement {
-  const { wide, panels, activePanelId, selectPanel, startSession, openSkills, t } = props
+  const { wide, panels, activePanelId, selectPanel, startSession, openSettingsSection, t } = props
   // The promotion array is both the membership set and the display order of
   // the bar: dragging rewrites it, so the order the user sees is the order
   // that survives a reload.
   const [promoted, setPromoted] = React.useState<string[]>(readPromoted)
   const promotedSet = React.useMemo(() => new Set(promoted), [promoted])
-  const availablePanels = React.useMemo(
-    () => panels.filter((panel) => panel.id !== 'skills-manager'),
-    [panels],
-  )
+  const skillsSeeded = React.useRef(false)
+
+  // Skills used to be a fixed row. Seed it into the promotion list once so the
+  // existing users keep it in the bar; after that it is an ordinary draggable
+  // function and the seed key prevents re-adding after a deliberate unpromote.
+  React.useEffect(() => {
+    if (skillsSeeded.current) return
+    if (!panels.some((panel) => panel.id === 'skills-manager')) return
+    skillsSeeded.current = true
+    try {
+      if (window.localStorage.getItem(SKILLS_SEED_KEY) !== null) return
+      window.localStorage.setItem(SKILLS_SEED_KEY, '1')
+      setPromoted((current) => {
+        if (current.includes('skills-manager')) return current
+        const next = [...current, 'skills-manager']
+        writePromoted(next)
+        return next
+      })
+    } catch {
+      // Storage is optional; the in-memory list remains usable.
+    }
+  }, [panels])
   const visible = React.useMemo(() => {
-    const byId = new Map(availablePanels.map((panel) => [panel.id, panel]))
+    const byId = new Map(panels.map((panel) => [panel.id, panel]))
     const rows: PanelItem[] = []
     for (const id of promoted) {
       const panel = byId.get(id)
       if (panel !== undefined) rows.push(panel)
     }
     return rows
-  }, [availablePanels, promoted])
-  const hiddenCount = availablePanels.length - visible.length
+  }, [panels, promoted])
+  const hiddenCount = panels.length - visible.length
   const [draggingId, setDraggingId] = React.useState<string | null>(null)
   const [dropEdge, setDropEdge] = React.useState<{ id: string; edge: DropEdge } | null>(null)
   const moreLabel = hiddenCount > 0 ? t('more.count', { count: hiddenCount }) : t('more')
@@ -2105,6 +2173,14 @@ function FunctionBar(props: {
     }
   }, [open])
 
+  const openPanel = (panel: PanelItem): void => {
+    if (panel.kind === 'settings' && panel.settingsSectionId !== undefined) {
+      openSettingsSection(panel.settingsSectionId)
+      return
+    }
+    selectPanel(panel.id)
+  }
+
   const moreButton = (
     <button
       ref={moreRef}
@@ -2131,7 +2207,6 @@ function FunctionBar(props: {
           <div className="dshLL_sectionLabel">{t('section.functions')}</div>
           <div className="dshLL_functionList">
             <FunctionRow icon={<IconNewChat />} label={t('newSession')} onClick={startSession} />
-            <FunctionRow icon={<IconSkill />} label={t('skills.open')} onClick={openSkills} />
             {visible.map((panel) => (
               <FunctionRow
                 key={panel.id}
@@ -2139,7 +2214,7 @@ function FunctionBar(props: {
                 label={panel.label}
                 active={activePanelId === panel.id}
                 drag={dragHandle(panel.id)}
-                onClick={() => selectPanel(panel.id)}
+                onClick={() => openPanel(panel)}
               />
             ))}
             {moreButton}
@@ -2149,9 +2224,6 @@ function FunctionBar(props: {
         <div className="dshLL_rail">
           <button type="button" className="dshLL_railButton" aria-label={t('newSession')} title={t('newSession')} onClick={startSession}>
             <IconNewChat size={18} />
-          </button>
-          <button type="button" className="dshLL_railButton" aria-label={t('skills.open')} title={t('skills.open')} onClick={openSkills}>
-            <IconSkill size={18} />
           </button>
           {visible.map((panel) => {
             const drag = dragHandle(panel.id)
@@ -2171,7 +2243,7 @@ function FunctionBar(props: {
                 onDragLeave={drag.onDragLeave}
                 onDrop={drag.onDrop}
                 onDragEnd={drag.onDragEnd}
-                onClick={() => selectPanel(panel.id)}
+                onClick={() => openPanel(panel)}
               >
                 <PanelIcon id={panel.id} size={18} />
               </button>
@@ -2185,10 +2257,13 @@ function FunctionBar(props: {
           <div className="dshLL_moreBackdrop" onPointerDown={() => setOpen(false)} />
           <MoreMenu
             anchor={anchor}
-            panels={availablePanels}
+            panels={panels}
             promoted={promotedSet}
             onToggle={toggle}
-            onOpen={selectPanel}
+            onOpen={(id) => {
+              const panel = panels.find((item) => item.id === id)
+              if (panel !== undefined) openPanel(panel)
+            }}
             onStartSession={startSession}
             onClose={() => setOpen(false)}
             t={t}
@@ -2229,7 +2304,7 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
     panels,
     selectPanel,
     startSession,
-    openSkills,
+    openSettingsSection,
     openSession,
     addWorkspace,
     useSessions,
@@ -2314,7 +2389,7 @@ function LeftLayoutRegion(props: LeftLayoutProps): React.ReactElement {
         activePanelId={activePanelId}
         selectPanel={selectPanel}
         startSession={startSession}
-        openSkills={openSkills}
+        openSettingsSection={openSettingsSection}
         t={t}
       />
 
@@ -2432,15 +2507,17 @@ export function apply(ctx: Context): void {
       selectPanel: (id) => {
         ctx.layout.selectPanel(id as never)
       },
-      openSkills: () => {
+      openSettingsSection: (sectionId) => {
+        // A settings-backed feature may also register a full main panel under
+        // the same id; prefer that panel, otherwise bridge into Settings.
         try {
           const mainEntries = ctx.slots.entriesOfSlot('main')
-          if (mainEntries.some((entry) => entry.options.key === 'skills-manager')) {
-            ctx.layout.selectPanel('skills-manager' as never)
+          if (mainEntries.some((entry) => entry.options.key === sectionId)) {
+            ctx.layout.selectPanel(sectionId as never)
             return
           }
         } catch (error) {
-          console.warn('[dsh-left-layout] skills main panel lookup failed', error)
+          console.warn('[dsh-left-layout] settings main panel lookup failed', error)
         }
 
         const pressSettingsShortcut = (altKey: boolean): void => {
@@ -2489,25 +2566,25 @@ export function apply(ctx: Context): void {
           pressSettingsShortcut(true)
         }
 
-        const labelOfSkills = (): string => {
+        const labelOfSection = (): string => {
           try {
             const entries = (ctx.slots as unknown as {
               entriesOfSlot(key: string): readonly {
                 options: { id?: string; label?: string | (() => string) }
               }[]
             }).entriesOfSlot('settings.section')
-            const entry = entries.find((item) => item.options.id === 'skills-manager')
+            const entry = entries.find((item) => item.options.id === sectionId)
             const raw = entry?.options.label
             const label = typeof raw === 'function' ? raw() : raw
             if (typeof label === 'string' && label !== '') return label
           } catch {
-            // Fall through to the default label.
+            // Fall through to the section id.
           }
-          return '技能'
+          return sectionId
         }
 
         openSettings()
-        const label = labelOfSkills()
+        const label = labelOfSection()
         let attempts = 0
         const selectSection = (): void => {
           const cells = Array.from(document.querySelectorAll<HTMLButtonElement>('[class*="navCell"]'))
@@ -2517,7 +2594,7 @@ export function apply(ctx: Context): void {
             return
           }
           if (attempts >= 60) {
-            console.warn('[dsh-left-layout] skills settings section not found')
+            console.warn('[dsh-left-layout] settings section not found: ' + sectionId)
             return
           }
           attempts += 1

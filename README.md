@@ -68,8 +68,10 @@ drag-and-drop, so it is mouse-only.
 - **New Session target**: the button creates the conversation in the automatic default workspace
   when that workspace is registered. If it is missing, the button falls back to the native
   current/recent-workspace choice.
-- **Skills entry**: the fixed **Skills** row opens the skills manager main panel when its sidebar
-  entry is enabled; otherwise it opens Settings and selects the **Skills** section.
+- **Skills entry**: **Skills** is an ordinary function now — promotable, reorderable, and able to
+  live in **More** like any other; a one-time seed keeps it in the bar right after upgrading.
+  Clicking it opens the skills manager main panel when that sidebar entry is enabled; otherwise it
+  opens Settings and selects the **Skills** section.
 - **Archived sessions** and subagent-origin sessions are hidden from both sections.
 - **Workspace row actions**: hover a workspace row to reveal the three-dot menu and the
   new-conversation button. Clicking the row (or its chevron) expands/collapses the workspace.
