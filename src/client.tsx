@@ -371,6 +371,34 @@ html[data-windows-titlebar][data-dsh-left-layout-collapsed] [class*="newSession"
   background: var(--dsw-specific-sidebar-nav-item-active, var(--dsw-alias-interactive-bg-hover));
 }
 
+/* Drag-to-reorder affordance for promoted functions, in both bar shapes. */
+.dshLL_row[draggable="true"],
+.dshLL_railButton[draggable="true"] {
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.dshLL_row[draggable="true"]:active,
+.dshLL_railButton[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.dshLL_row[data-dragging="true"],
+.dshLL_railButton[data-dragging="true"] {
+  opacity: 0.4;
+}
+
+.dshLL_row[data-drop="before"],
+.dshLL_railButton[data-drop="before"] {
+  box-shadow: inset 0 2px 0 0 var(--dsw-alias-state-business-primary, #6aa7ff);
+}
+
+.dshLL_row[data-drop="after"],
+.dshLL_railButton[data-drop="after"] {
+  box-shadow: inset 0 -2px 0 0 var(--dsw-alias-state-business-primary, #6aa7ff);
+}
+
 .dshLL_sectionAction {
   display: inline-flex;
   align-items: center;
@@ -1052,18 +1080,63 @@ function PanelIcon({ id, size = 16 }: { id: string; size?: number }): React.Reac
   return <IconWorkspace size={size} />
 }
 
+/** Which side of the hovered row a dragged function would land on. */
+type DropEdge = 'before' | 'after'
+
+/**
+ * Insert `draggedId` on the requested side of `targetId`. Returns the input
+ * array unchanged when the move is meaningless, so callers can skip a write.
+ */
+function moveInList(
+  ids: readonly string[],
+  draggedId: string,
+  targetId: string,
+  edge: DropEdge,
+): readonly string[] {
+  if (draggedId === targetId) return ids
+  const from = ids.indexOf(draggedId)
+  if (from < 0) return ids
+  const next = [...ids]
+  next.splice(from, 1)
+  const anchor = next.indexOf(targetId)
+  if (anchor < 0) return ids
+  next.splice(edge === 'after' ? anchor + 1 : anchor, 0, draggedId)
+  return next
+}
+
+/** Drag wiring handed to one reorderable function button. */
+interface DragHandle {
+  dragging: boolean
+  edge: DropEdge | null
+  onDragStart(event: React.DragEvent<HTMLElement>): void
+  onDragOver(event: React.DragEvent<HTMLElement>): void
+  onDragLeave(event: React.DragEvent<HTMLElement>): void
+  onDrop(event: React.DragEvent<HTMLElement>): void
+  onDragEnd(event: React.DragEvent<HTMLElement>): void
+}
+
 /** Render a full-width function row. */
 function FunctionRow(props: {
   icon: React.ReactNode
   label: string
   active?: boolean
+  drag?: DragHandle
   onClick(): void
 }): React.ReactElement {
+  const drag = props.drag
   return (
     <button
       type="button"
       className="dshLL_row"
       data-active={props.active === true ? 'true' : undefined}
+      draggable={drag === undefined ? undefined : true}
+      data-dragging={drag !== undefined && drag.dragging ? 'true' : undefined}
+      data-drop={drag?.edge ?? undefined}
+      onDragStart={drag?.onDragStart}
+      onDragOver={drag?.onDragOver}
+      onDragLeave={drag?.onDragLeave}
+      onDrop={drag?.onDrop}
+      onDragEnd={drag?.onDragEnd}
       onClick={props.onClick}
     >
       <span className="dshLL_rowIcon">{props.icon}</span>
@@ -1143,13 +1216,22 @@ function createPanelSource(ctx: Context): {
 
 const PROMOTED_KEY = 'dsh-left-layout:promoted:v1'
 
-/** Read the browser-local promotion list; malformed storage means no promotions. */
+/**
+ * Read the browser-local promotion list. The array doubles as the display
+ * order of the function bar, so duplicates are collapsed on read; malformed
+ * storage means no promotions.
+ */
 function readPromoted(): string[] {
   try {
     const raw = window.localStorage.getItem(PROMOTED_KEY)
     if (raw === null) return []
     const parsed: unknown = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+    if (!Array.isArray(parsed)) return []
+    const ids: string[] = []
+    for (const item of parsed) {
+      if (typeof item === 'string' && !ids.includes(item)) ids.push(item)
+    }
+    return ids
   } catch {
     return []
   }
@@ -1893,10 +1975,23 @@ function FunctionBar(props: {
   t: LayoutT
 }): React.ReactElement {
   const { wide, panels, activePanelId, selectPanel, startSession, t } = props
+  // The promotion array is both the membership set and the display order of
+  // the bar: dragging rewrites it, so the order the user sees is the order
+  // that survives a reload.
   const [promoted, setPromoted] = React.useState<string[]>(readPromoted)
   const promotedSet = React.useMemo(() => new Set(promoted), [promoted])
-  const visible = panels.filter((panel) => promotedSet.has(panel.id))
+  const visible = React.useMemo(() => {
+    const byId = new Map(panels.map((panel) => [panel.id, panel]))
+    const rows: PanelItem[] = []
+    for (const id of promoted) {
+      const panel = byId.get(id)
+      if (panel !== undefined) rows.push(panel)
+    }
+    return rows
+  }, [panels, promoted])
   const hiddenCount = panels.length - visible.length
+  const [draggingId, setDraggingId] = React.useState<string | null>(null)
+  const [dropEdge, setDropEdge] = React.useState<{ id: string; edge: DropEdge } | null>(null)
   const moreLabel = hiddenCount > 0 ? t('more.count', { count: hiddenCount }) : t('more')
   const [open, setOpen] = React.useState(false)
   const [anchor, setAnchor] = React.useState<{ top: number; left: number; width: number } | null>(null)
@@ -1911,15 +2006,64 @@ function FunctionBar(props: {
     setOpen(true)
   }
 
-  const toggle = (id: string, on: boolean): void => {
-    setPromoted((current) => {
-      const next = on
-        ? (current.includes(id) ? current : [...current, id])
-        : current.filter((item) => item !== id)
-      writePromoted(next)
-      return next
-    })
+  /** Set the promotion list and mirror it to storage in one place. */
+  const commit = (next: string[]): void => {
+    setPromoted(next)
+    writePromoted(next)
   }
+
+  const toggle = (id: string, on: boolean): void => {
+    if (on) {
+      if (!promoted.includes(id)) commit([...promoted, id])
+      return
+    }
+    if (promoted.includes(id)) commit(promoted.filter((item) => item !== id))
+  }
+
+  /** Move a dragged function next to another one; both edges are supported. */
+  const movePromoted = (draggedId: string, targetId: string, edge: DropEdge): void => {
+    const next = moveInList(promoted, draggedId, targetId, edge)
+    if (next !== promoted) commit([...next])
+  }
+
+  /**
+   * Drag wiring for one function button. The list is a single vertical stack in
+   * both bar shapes, so the pointer's half of the row decides the landing edge.
+   */
+  const dragHandle = (id: string): DragHandle => ({
+    dragging: draggingId === id,
+    edge: dropEdge !== null && dropEdge.id === id ? dropEdge.edge : null,
+    onDragStart: (event) => {
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('text/plain', id)
+      setDraggingId(id)
+      setDropEdge(null)
+    },
+    onDragOver: (event) => {
+      if (draggingId === null || draggingId === id) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      const rect = event.currentTarget.getBoundingClientRect()
+      const edge: DropEdge = event.clientY - rect.top > rect.height / 2 ? 'after' : 'before'
+      if (dropEdge === null || dropEdge.id !== id || dropEdge.edge !== edge) setDropEdge({ id, edge })
+    },
+    onDragLeave: (event) => {
+      const next = event.relatedTarget as Node | null
+      if (next !== null && event.currentTarget.contains(next)) return
+      if (dropEdge !== null && dropEdge.id === id) setDropEdge(null)
+    },
+    onDrop: (event) => {
+      event.preventDefault()
+      const edge = dropEdge !== null && dropEdge.id === id ? dropEdge.edge : 'before'
+      if (draggingId !== null) movePromoted(draggingId, id, edge)
+      setDraggingId(null)
+      setDropEdge(null)
+    },
+    onDragEnd: () => {
+      setDraggingId(null)
+      setDropEdge(null)
+    },
+  })
 
   React.useEffect(() => {
     if (!open) return
@@ -1975,6 +2119,7 @@ function FunctionBar(props: {
                 icon={<PanelIcon id={panel.id} />}
                 label={panel.label}
                 active={activePanelId === panel.id}
+                drag={dragHandle(panel.id)}
                 onClick={() => selectPanel(panel.id)}
               />
             ))}
@@ -1986,19 +2131,30 @@ function FunctionBar(props: {
           <button type="button" className="dshLL_railButton" aria-label={t('newSession')} title={t('newSession')} onClick={startSession}>
             <IconNewChat size={18} />
           </button>
-          {visible.map((panel) => (
-            <button
-              key={panel.id}
-              type="button"
-              className="dshLL_railButton"
-              aria-label={panel.label}
-              title={panel.label}
-              data-active={activePanelId === panel.id ? 'true' : undefined}
-              onClick={() => selectPanel(panel.id)}
-            >
-              <PanelIcon id={panel.id} size={18} />
-            </button>
-          ))}
+          {visible.map((panel) => {
+            const drag = dragHandle(panel.id)
+            return (
+              <button
+                key={panel.id}
+                type="button"
+                className="dshLL_railButton"
+                aria-label={panel.label}
+                title={panel.label}
+                data-active={activePanelId === panel.id ? 'true' : undefined}
+                draggable
+                data-dragging={drag.dragging ? 'true' : undefined}
+                data-drop={drag.edge ?? undefined}
+                onDragStart={drag.onDragStart}
+                onDragOver={drag.onDragOver}
+                onDragLeave={drag.onDragLeave}
+                onDrop={drag.onDrop}
+                onDragEnd={drag.onDragEnd}
+                onClick={() => selectPanel(panel.id)}
+              >
+                <PanelIcon id={panel.id} size={18} />
+              </button>
+            )
+          })}
           {moreButton}
         </div>
       )}

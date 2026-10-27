@@ -12,7 +12,8 @@ kind: "package-bundle"
 `dsh-left-layout` replaces the sidebar browsing region with a three-section layout:
 
 1. **Functions** — New Session and the global panels. New Session is always visible. Every other
-   function can live in the **More** menu and is promoted to the bar with a checkbox.
+   function can live in the **More** menu and is promoted to the bar with a checkbox; promoted
+   functions can be **drag-reordered**.
 2. **Tasks** — conversations in the default workspace plus ungrouped conversations. The five most
    recent conversations from the last 30 days stay visible; everything else folds into **Show more**.
 3. **Workspaces** — every explicitly registered workspace. Expand a row to see its conversations,
@@ -40,12 +41,18 @@ sidebar immediately; re-enable it to bring the three-section layout back. The pl
 persistent data, and it removes its styles and DOM markers on unload.
 
 Promotion choices are stored per browser in `localStorage` under
-`dsh-left-layout:promoted:v1`; tasks removed with **Delete task** are stored under
-`dsh-left-layout:hidden-tasks:v1`.
+`dsh-left-layout:promoted:v1`, and the array order is the bar's display order; tasks removed with
+**Delete task** are stored under `dsh-left-layout:hidden-tasks:v1`.
 
 In the **More** menu, each row has two independent gestures: the checkbox moves the function
 between the bar and More, while clicking the function icon/name opens that function and closes
 the menu.
+
+Promoted functions can be dragged to reorder them: drop on the upper half of a row to land above
+it, on the lower half to land below it (a drop line marks the target). The new order is written
+back to the same `localStorage` key and survives a reload. A newly checked function is appended to
+the end, and unchecking then re-checking also moves it to the end. Dragging uses native HTML5
+drag-and-drop, so it is mouse-only.
 
 ## Behavior notes
 
@@ -86,6 +93,8 @@ the entire feature is browser-side.
 
 - Workspace drag-reorder is not exposed yet; rename, delete, and open-folder are available from
   the hover menu. **Delete task** is a local hide, not a Session-log deletion.
+- Function-bar drag-reorder relies on native HTML5 drag-and-drop, so it works with a mouse only;
+  touch screens and keyboard-only reordering are not supported.
 - The default-workspace match is a path/title convention of this DSH release. If a deployment
   changes that convention, the task area falls back to ungrouped conversations only.
 - On Windows the sidebar's collapsed state hides the browsing region; the native title-bar New

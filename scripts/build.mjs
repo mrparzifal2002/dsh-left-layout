@@ -26,7 +26,10 @@ const result = ts.transpileModule(source, {
     sourceMap: false,
   },
 })
-const body = result.outputText
+// The transpiler copies template-literal text verbatim, so a CRLF checkout
+// would bake CRLF into the shipped CSS and make the committed bundle churn on
+// every Windows build. Emit LF only, on every platform.
+const body = result.outputText.replace(/\r\n?/g, '\n')
 writeFileSync(join(root, '.build', 'client.js'), body)
 
 // Declaration files for the published type surface.
